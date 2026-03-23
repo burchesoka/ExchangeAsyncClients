@@ -13,6 +13,7 @@ import pandas as pd
 import exceptions
 
 from .base import (
+    BaseAsyncFuturesClient,
     INTERVAL_IN_SEC,
     PositionData,
     OrderData,
@@ -32,7 +33,7 @@ from .async_bybit_api import BybitAPI
 logger = logging.getLogger(__name__)
 
 
-class AsyncBybitFuturesClient(BybitAPI):
+class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
     def __init__(
             self,
             session: aiohttp.ClientSession,
@@ -42,22 +43,18 @@ class AsyncBybitFuturesClient(BybitAPI):
             api_secret: str = None,
             password: str = None,
     ):
-        self.category = category
-
-        super().__init__(
-            # category=category,
+        BaseAsyncFuturesClient.__init__(
+            self,
+            category=category,
+            test=test,
+            password=password,
+        )
+        BybitAPI.__init__(
+            self,
             session=session,
-            # test=test,
             api_key=api_key,
             api_secret=api_secret,
-            # password=password
         )
-
-    async def switch_position_mode_for_one_symbol(self, mode: PositionMode, symbol: str):
-        return await self.switch_position_mode(mode=mode, symbol=symbol)
-
-    async def switch_position_mode_for_all_symbols(self, mode: PositionMode, coin: str):
-        return await self.switch_position_mode(mode=mode, coin=coin)
 
     async def get_all_instruments_info(self):
         res = []
