@@ -8,7 +8,7 @@ import aiohttp
 from aiolimiter import AsyncLimiter
 
 import exceptions
-from base_async_exchange_client import BaseAsyncExchangeAPI
+from base_async_exchange_api import BaseAsyncExchangeAPI
 
 
 logger = logging.getLogger(__name__)

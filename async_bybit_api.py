@@ -7,7 +7,7 @@ import hmac
 import hashlib
 
 import exceptions
-from base_async_exchange_client import BaseAsyncExchangeAPI
+from base_async_exchange_api import BaseAsyncExchangeAPI
 
 from urllib.parse import urlencode
 
