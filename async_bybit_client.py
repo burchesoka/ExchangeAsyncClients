@@ -111,7 +111,6 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
 
             response = await self.get_request('/v5/account/wallet-balance', params=params)
 
-            logger.debug(response)
             if response.get('info'):
                 response = response.get('info')
 
@@ -119,7 +118,6 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
                 try:
                     wallet_balance_data_in_usdt = None
                     wallet_balance_data = response.get('result').get('list')[0]
-                    logger.debug('get_wallet_data resp: %s', response)
                     for coin_data in wallet_balance_data['coin']:
                         if coin_data.get('coin').upper() == 'USDT':
                             wallet_balance_data_in_usdt = coin_data
@@ -140,7 +138,6 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
                             raise exceptions.EmptyWallet(response)
 
                     wallet_balance_data |= wallet_balance_data_in_usdt
-                    logger.debug(wallet_balance_data)
 
                     if not wallet_balance_data['totalAvailableBalance']:
                         wallet_balance_data['totalAvailableBalance'] = '0'

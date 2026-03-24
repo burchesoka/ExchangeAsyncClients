@@ -239,8 +239,9 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         self,
         symbol: str,
         side: str,
-        qty: float | str,
-        order_type: str = "Market",
+        quantity: float | str,
+        order_type: str,
+        position_mode: str,
         price: float | str | None = None,
         stop_price: float | str | None = None,
         take_price: float | str | None = None,
@@ -252,7 +253,7 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         params = {
             "symbol": symbol,
             "side": side.upper(),
-            "quantity": str(qty),
+            "quantity": str(quantity),
             "type": order_type.upper().replace(" ", "_"),
             "reduceOnly": "true" if reduce_only else "false",
         }
