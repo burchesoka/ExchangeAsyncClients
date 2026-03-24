@@ -248,7 +248,7 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         reduce_only: bool = False,
         position_side: str | None = None,
         time_in_force: str = "GTC",
-    ):
+    ) -> str:
         _ = take_price
         params = {
             "symbol": symbol,
@@ -265,7 +265,13 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         if position_side is not None:
             params["positionSide"] = position_side.upper()
 
-        return await self.post_request("/fapi/v1/order", body=params)
+        response = await self.post_request("/fapi/v1/order", body=params)
+        logger.debug('new_order response: %s', response)
+        return response.get("orderId")
+        if response.get("orderId") is not None:
+            return response.get("orderId")
+        else:
+            raise Exception(response)
 
     async def cancel_all_orders(self):
         open_orders = await self.get_open_orders()
