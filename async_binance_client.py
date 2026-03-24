@@ -153,11 +153,24 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
             return True
 
     async def get_instrument_info(self, symbol: str) -> dict:
-        response = await self.public_get_request("/fapi/v1/exchangeInfo", params={"symbol": symbol})
+        response = await self.public_get_request("/fapi/v1/exchangeInfo")
+        logger.info(response)
+
         symbols = response.get("symbols", [])
         if not symbols:
             raise exceptions.NotFound(symbol)
-        return symbols[0]
+        
+        for symbol in symbols:
+            if symbol.get("symbol") == symbol:
+                symbol_info = symbol
+                break
+        
+        return symbol_info
+        # return {
+        #     'min_qty': lot_size_info['minOrderQty'],
+        #     'tick_size': price_info['tickSize'],
+        #     'contract_value': '1',
+        # }
 
     async def get_klines_history(self, symbol: str, interval: str, candles: int) -> list:
         now = int(time.time() * 1000)

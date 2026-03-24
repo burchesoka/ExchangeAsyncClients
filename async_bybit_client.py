@@ -296,8 +296,10 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             raise Exception
 
         price_info = instrument_info.get('result').get('list')[0]['priceFilter']
+        symbol = instrument_info.get('result').get('list')[0]['symbol']
         lot_size_info = instrument_info.get('result').get('list')[0]['lotSizeFilter']
         return {
+            'symbol': symbol,
             'min_qty': lot_size_info['minOrderQty'],
             'tick_size': price_info['tickSize'],
             'contract_value': '1',
