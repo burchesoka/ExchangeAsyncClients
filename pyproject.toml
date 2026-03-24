@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "async-futures-clients"
-version = "0.1.0"
+version = "0.1.1"
 description = "Async futures exchange clients for Bybit and Binance"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,3 +25,7 @@ py-modules = [
     "async_binance_api",
     "async_binance_client",
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["clients*"]

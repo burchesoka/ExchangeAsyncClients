@@ -14,7 +14,7 @@ pip install git+https://github.com/burchesoka/ExchangeAsyncClients.git
 import aiohttp
 import asyncio
 
-from async_bybit_client import AsyncBybitFuturesClient
+from clients.async_bybit_client import AsyncBybitFuturesClient
 
 
 async def main():
@@ -33,4 +33,21 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+```
+
+## Imports
+
+Recommended import style:
+
+```python
+from clients.async_bybit_client import AsyncBybitFuturesClient
+from clients.async_binance_client import AsyncBinanceFuturesClient
+from clients.base import BaseAsyncFuturesClient, PositionMode
+```
+
+Backward-compatible (legacy) imports still work:
+
+```python
+from async_bybit_client import AsyncBybitFuturesClient
+from async_binance_client import AsyncBinanceFuturesClient
 ```

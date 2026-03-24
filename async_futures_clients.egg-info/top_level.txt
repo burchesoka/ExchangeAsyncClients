@@ -4,4 +4,5 @@ async_bybit_api
 async_bybit_client
 base
 base_async_exchange_api
+clients
 exceptions
