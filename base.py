@@ -235,3 +235,129 @@ class BaseAsyncFuturesClient(ABC):
         coin: str | None = None,
     ):
         raise NotImplementedError
+
+    @abstractmethod
+    async def get_all_instruments_info(self) -> dict[str, InstrumentInfo]:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_account_info(self) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def is_master_trader_account(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_api_key_info(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_user_id(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_wallet_data(self) -> WalletData:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def transfer(self, from_account: str, to_account: str, amount: float):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def set_leverage(self, symbol: str, buy_leverage: int, sell_leverage: int):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def set_margin_mode_to_account(self, isolated: bool = False):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def switch_margin_mode(self, symbol: str, margin_mode: str, leverage: float) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_instrument_info(self, symbol: str) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_klines_history(self, symbol: str, interval: str, candles: int) -> list:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_klines(self, symbol: str, interval: str, limit: int, start: int, end: int) -> list:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_history_data_frame(
+        self,
+        symbol: str,
+        interval: str,
+        start_time: int | float | datetime.datetime = None,
+        end_time: int | float | datetime.datetime = None,
+        start_str: str = None,
+        end_str: str = None,
+        closed_bars: bool = False,
+    ) -> pd.DataFrame:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def new_order(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def cancel_all_orders(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def cancel_order(self, symbol: str, order_id: str):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_order_history(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def check_order(self, symbol: str, order_id: str):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_executions(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_open_order(self, symbol: str, order_id: str, retries: int = 70) -> OrderData:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_open_orders(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_all_positions(self) -> list[PositionData]:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_position(self, symbol: str, side: str, empty_available: bool = False) -> PositionData | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def close_all_positions(self, symbol: str, position_data: PositionData):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_deposit_transactions(self, start_time: int = None, end_time: int = None):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_closed_pnl_history(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_closed_pnls_list(
+        self,
+        save_pnls_and_get_fee_fn: Callable,
+        start_time: int = None,
+        end_time: int = None,
+    ) -> SavePnlsAndGetFeeResponse:
+        raise NotImplementedError
