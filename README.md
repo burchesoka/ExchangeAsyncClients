@@ -5,7 +5,7 @@ Python modules for working with futures APIs of Bybit and Binance.
 ## Installation from GitHub
 
 ```bash
-pip install git+https://github.com/<owner>/<repo>.git
+pip install git+https://github.com/burchesoka/ExchangeAsyncClients.git
 ```
 
 ## Usage
