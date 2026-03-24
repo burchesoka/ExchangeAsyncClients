@@ -160,18 +160,20 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         if not symbols:
             raise exceptions.NotFound(symbol)
         
-        for symbol in symbols:
-            logger.info("%s %s", symbol.get("symbol"), symbol)
-            if str(symbol.get("symbol")).upper() == symbol.upper():
-                symbol_info = symbol
+        for s in symbols:
+            if s.get("symbol") == symbol:
+                symbol_info = s
                 break
-        
-        return symbol_info
-        # return {
-        #     'min_qty': lot_size_info['minOrderQty'],
-        #     'tick_size': price_info['tickSize'],
-        #     'contract_value': '1',
-        # }
+        symbol_info_filtered = {
+            "symbol": symbol,
+            'contract_value': '1',
+        }
+        for filter in symbol_info["filters"]:
+            if filter["filterType"] == "LOT_SIZE":
+                symbol_info_filtered["min_qty"] = filter["minQty"]
+            elif filter["filterType"] == "PRICE_FILTER":
+                symbol_info_filtered["tick_size"] = filter["tickSize"]
+        return symbol_info_filtered
 
     async def get_klines_history(self, symbol: str, interval: str, candles: int) -> list:
         now = int(time.time() * 1000)
