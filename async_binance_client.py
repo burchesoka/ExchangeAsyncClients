@@ -154,14 +154,15 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
 
     async def get_instrument_info(self, symbol: str) -> dict:
         response = await self.public_get_request("/fapi/v1/exchangeInfo")
-        logger.info(response)
 
-        symbols = response.get("symbols", [])
+        symbols = response.pop("symbols", [])
+
         if not symbols:
             raise exceptions.NotFound(symbol)
         
         for symbol in symbols:
-            if symbol.get("symbol") == symbol:
+            logger.info("%s %s", symbol.get("symbol"), symbol)
+            if str(symbol.get("symbol")).upper() == symbol.upper():
                 symbol_info = symbol
                 break
         
