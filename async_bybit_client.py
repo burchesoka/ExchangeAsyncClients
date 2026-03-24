@@ -12,7 +12,7 @@ import pandas as pd
 
 import exceptions
 
-from .base import (
+from base import (
     BaseAsyncFuturesClient,
     INTERVAL_IN_SEC,
     PositionData,
@@ -27,7 +27,7 @@ from .base import (
     ORDER_SPECS,
     Exchange,
 )
-from .async_bybit_api import BybitAPI
+from async_bybit_api import BybitAPI
 
 
 logger = logging.getLogger(__name__)

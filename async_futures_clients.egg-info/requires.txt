@@ -1,0 +1,4 @@
+aiohttp
+aiolimiter
+pandas
+pydantic>=2

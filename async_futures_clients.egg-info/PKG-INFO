@@ -1,0 +1,46 @@
+Metadata-Version: 2.4
+Name: async-futures-clients
+Version: 0.1.0
+Summary: Async futures exchange clients for Bybit and Binance
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: aiohttp
+Requires-Dist: aiolimiter
+Requires-Dist: pandas
+Requires-Dist: pydantic>=2
+
+# Async Futures Clients
+
+Python modules for working with futures APIs of Bybit and Binance.
+
+## Installation from GitHub
+
+```bash
+pip install git+https://github.com/<owner>/<repo>.git
+```
+
+## Usage
+
+```python
+import aiohttp
+import asyncio
+
+from async_bybit_client import AsyncBybitFuturesClient
+
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        client = AsyncBybitFuturesClient(
+            session=session,
+            api_key="YOUR_KEY",
+            api_secret="YOUR_SECRET",
+            category="linear",
+            test=False,
+        )
+        wallet = await client.get_wallet_data()
+        print(wallet)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```

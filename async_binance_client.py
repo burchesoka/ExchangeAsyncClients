@@ -9,7 +9,7 @@ import pandas as pd
 
 import exceptions
 
-from .base import (
+from base import (
     BaseAsyncFuturesClient,
     INTERVAL_IN_SEC,
     Exchange,
@@ -22,7 +22,7 @@ from .base import (
     PositionMode,
     WalletData,
 )
-from .async_binance_api import BinanceAPI
+from async_binance_api import BinanceAPI
 
 
 logger = logging.getLogger(__name__)
