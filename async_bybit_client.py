@@ -42,6 +42,7 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             api_key: str = None,
             api_secret: str = None,
             password: str = None,
+            broker_id: str | None = None,
     ):
         BaseAsyncFuturesClient.__init__(
             self,
@@ -54,6 +55,7 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             session=session,
             api_key=api_key,
             api_secret=api_secret,
+            broker_id=broker_id,
         )
 
     async def get_all_instruments_info(self):

@@ -16,9 +16,16 @@ logger = logging.getLogger(__name__)
 
 
 class BybitAPI(BaseAsyncExchangeAPI):
-    def __init__(self, session: aiohttp.ClientSession, api_secret: str, api_key: str):
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        api_secret: str,
+        api_key: str,
+        broker_id: str | None = None,
+    ):
         self.recv_window = "15000"
         self.recv_window_shift = 0
+        self.broker_id = broker_id
         self.base_url = "https://api.bybit.com"
         limiters = {
             '10': AsyncLimiter(10, 1),  # 10 запросов в 1 секунду
@@ -84,6 +91,8 @@ class BybitAPI(BaseAsyncExchangeAPI):
             "X-BAPI-SIGN-TYPE": "2",
             "Content-Type": "application/json",
         }
+        if self.broker_id:
+            headers["X-Referer"] = self.broker_id
         return headers
 
     def sign_get(self, params: dict | None) -> dict:
@@ -107,6 +116,8 @@ class BybitAPI(BaseAsyncExchangeAPI):
             "X-BAPI-RECV-WINDOW": self.recv_window,
             "X-BAPI-SIGN-TYPE": "2",
         }
+        if self.broker_id:
+            headers["X-Referer"] = self.broker_id
         return headers
 
 
