@@ -25,6 +25,7 @@ async def main():
             api_secret="YOUR_SECRET",
             category="linear",
             test=False,
+            brocker_id="Your_brocker_id",
         )
         wallet = await client.get_wallet_data()
         print(wallet)
