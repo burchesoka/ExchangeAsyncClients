@@ -88,33 +88,6 @@ class Exchange(str, Enum):
     bingx = 'bingx'
 
 
-class BaseAsyncFuturesClient(ABC):
-    def __init__(
-        self,
-        category: str = "linear",
-        test: bool = False,
-        password: str | None = None,
-    ):
-        self.category = category
-        self.test = test
-        self.password = password
-
-    async def switch_position_mode_for_one_symbol(self, mode: PositionMode, symbol: str):
-        return await self.switch_position_mode(mode=mode, symbol=symbol)
-
-    async def switch_position_mode_for_all_symbols(self, mode: PositionMode, coin: str):
-        return await self.switch_position_mode(mode=mode, coin=coin)
-
-    @abstractmethod
-    async def switch_position_mode(
-        self,
-        mode: PositionMode,
-        symbol: str | None = None,
-        coin: str | None = None,
-    ):
-        raise NotImplementedError
-
-
 class InstrumentInfo(BaseModel):
     symbol: str
     min_order_qty: Decimal = Field(validation_alias=AliasChoices('minOrderQty', 'min_order_qty'))
@@ -235,3 +208,30 @@ class SavePnlsAndGetFeeResponse(BaseModel):
     fee: Decimal
     closed_pnl: Decimal
     auto_withdraw: bool
+
+
+class BaseAsyncFuturesClient(ABC):
+    def __init__(
+        self,
+        category: str = "linear",
+        test: bool = False,
+        password: str | None = None,
+    ):
+        self.category = category
+        self.test = test
+        self.password = password
+
+    async def switch_position_mode_for_one_symbol(self, mode: PositionMode, symbol: str):
+        return await self.switch_position_mode(mode=mode, symbol=symbol)
+
+    async def switch_position_mode_for_all_symbols(self, mode: PositionMode, coin: str):
+        return await self.switch_position_mode(mode=mode, coin=coin)
+
+    @abstractmethod
+    async def switch_position_mode(
+        self,
+        mode: PositionMode,
+        symbol: str | None = None,
+        coin: str | None = None,
+    ):
+        raise NotImplementedError
