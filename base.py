@@ -318,7 +318,7 @@ class BaseAsyncFuturesClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def check_order(self, symbol: str, order_id: str):
+    async def _check_order(self, symbol: str, order_id: str):
         raise NotImplementedError
 
     @abstractmethod

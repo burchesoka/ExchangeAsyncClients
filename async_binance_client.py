@@ -311,10 +311,15 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
     async def get_order_history(
         self,
         symbol: str,
+        order_id: str = None,
         start_time: int | None = None,
         end_time: int | None = None,
         limit: int = 1000,
-    ) -> list[OrderData]:
+    ) -> list[OrderData] | OrderData:
+        if order_id is not None:
+            response = await self.get_request("/fapi/v1/order", params={"symbol": symbol, "orderId": order_id})
+            return [self._order_from_binance(response)]
+
         params = {"symbol": symbol, "limit": min(limit, 1000)}
         if start_time is not None:
             params["startTime"] = start_time
@@ -323,9 +328,8 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         response = await self.get_request("/fapi/v1/allOrders", params=params)
         return [self._order_from_binance(item) for item in response]
 
-    async def check_order(self, symbol: str, order_id: str):
-        response = await self.get_request("/fapi/v1/order", params={"symbol": symbol, "orderId": order_id})
-        return self._order_from_binance(response)
+    async def _check_order(self, symbol: str, order_id: str) -> OrderData:
+        raise NotImplementedError
 
     async def get_executions(
         self,

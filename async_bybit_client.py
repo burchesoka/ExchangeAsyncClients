@@ -529,8 +529,8 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             "category": self.category,
             "settleCoin": 'USDT'
         }
-        canceled_order = await self.post_request("/v5/order/cancel-all", body=params)
-        logger.debug('cancel_all_orders: %s', canceled_order)
+        canceled_orders = await self.post_request("/v5/order/cancel-all", body=params)
+        logger.info('canceled_orders: %s', canceled_orders)
 
     async def cancel_order(self, symbol: str, order_id: str):
         logger.info('_cancel_order %s id: %s', symbol, order_id)
@@ -546,13 +546,12 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             return True
         except exceptions.OrderNotExist:
             try:
-                await self.check_order(symbol, order_id)
+                await self._check_order(symbol, order_id)
             except exceptions.OrderNotFound:
                 pass
 
             logger.error('Order does not exist symbol: %s | id: %s', symbol, order_id)
             return True
-
 
     async def get_order_history(
             self,
@@ -670,7 +669,7 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             order_data.customize()
             return order_data
 
-    async def check_order(self, symbol: str, order_id: str):
+    async def _check_order(self, symbol: str, order_id: str):
         logger.debug('check_order if it filled or not')
 
         order_data = await self.get_order_history(

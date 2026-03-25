@@ -139,7 +139,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             raise exceptions.MarginInsufficient
         if code in (-1015, -1003) or "too many requests" in msg.lower():
             raise exceptions.RateLimitExceeded
-        if code in (-2011,):
+        if code in (-2011, -2013):
             raise exceptions.OrderNotExist
         if code in (-2022,):
             raise exceptions.ReduceImpossible
@@ -150,6 +150,8 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             raise exceptions.OrderValidationError
         if code in (-2010,):
             raise exceptions.FailedOrder
+        if code in (-4164,):
+            raise exceptions.MinimumLimitExceeded
 
         logger.critical("Unknown Binance API error. url=%s status=%s response=%s", url, status_code, response)
         raise exceptions.RequestError
