@@ -883,10 +883,10 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
         position = None
         zero_position = None
         for pos in positions_list:
-            if pos.get('side').upper() == side or (empty_available and pos.get('side') == 'None'):
+            if pos.get('side').upper() == side:
                 position = pos
                 break
-            elif pos.get('side') == '':
+            elif (empty_available and pos.get('side') == ''):
                 zero_position = pos
 
         if position is None:
@@ -894,6 +894,7 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
                 return None
             else:
                 position = zero_position
+                position['side'] = side
 
         position['side'] = position['side'].upper()
 

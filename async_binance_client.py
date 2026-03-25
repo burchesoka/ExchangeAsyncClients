@@ -413,10 +413,11 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
 
     async def get_position(self, symbol: str, side: "str", empty_available: bool = False) -> PositionData | None:
         _ = empty_available
-        positions = await self.get_all_positions()
-        for position in positions:
-            if position.symbol == symbol and position.side.upper() == side.upper():
-                return position
+        response = await self.get_request("/fapi/v2/positionRisk", params={"symbol": symbol})
+        print('get_position response: %s', response)
+        for item in response:
+            if item.get("symbol") == symbol and item.get("positionSide") == side.upper():
+                return self._position_from_binance(item)
         return None
 
     async def close_all_positions(self, symbol: str, position_data: PositionData):
