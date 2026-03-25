@@ -354,10 +354,12 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
                 "price": str(item.get("price", "0")),
                 "position_side": item.get("positionSide", "BOTH"),
                 "side": item.get("side", ""),
+                "time": item.get("time"),
             }
             execution = ExecutionsData.model_validate(payload)
             execution.customize()
             results.append(execution)
+        results.reverse()
         return results
 
     async def get_open_order(self, symbol: str, order_id: str, retries: int = 70) -> OrderData:

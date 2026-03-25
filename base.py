@@ -110,6 +110,8 @@ class ExecutionsData(BaseModel):
     price: Decimal
     position_side: str
     side: str
+    # Время исполнения (обычно ms epoch, ключи: createdTime/time/execTime).
+    time: int | None = None
 
     def customize(self):
         self.symbol = self.symbol.replace('-', '')

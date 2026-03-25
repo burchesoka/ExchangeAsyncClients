@@ -756,7 +756,8 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
                 position_side=position_side,
                 exec_qty=ex['execQty'],
                 order_id=ex['orderId'],
-                price=ex['execPrice']
+                price=ex['execPrice'],
+                time=ex.get('execTime'),
             )
             data.customize()
             executions_data.append(data)
