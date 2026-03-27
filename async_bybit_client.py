@@ -720,10 +720,12 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
                 params['endTime'] = end_time
             if next_page_cursor:
                 params['cursor'] = next_page_cursor
+                params['startTime'] = start_time
+                params['endTime'] = end_time
                 params.pop('startTime')
                 params.pop('endTime')
             response = await self.get_request('/v5/execution/list', params=params)
-            logger.debug(response)
+            # logger.debug(response)
 
             if response['retCode'] == 0:
                 if response['result']:
@@ -874,7 +876,7 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
         }
         position_response = await self.get_request("/v5/position/list", params=params)
 
-        logger.debug('get_positions for %s response: %s', symbol, position_response)
+        # logger.debug('get_positions for %s response: %s', symbol, position_response)
         positions_list = position_response['result']['list']
 
         if not positions_list:

@@ -64,7 +64,6 @@ class BybitAPI(BaseAsyncExchangeAPI):
             limiters_dict=limiters_dict,
         )
 
-
     def sign_bybit(self, params: dict) -> str:
         """Подпись для Bybit v5: query string -> HMAC SHA256, hex."""
         param_str = urlencode(sorted(params.items()))

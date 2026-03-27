@@ -27,11 +27,6 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             "5": AsyncLimiter(5, 1),
         }
         limiters_dict = {
-            "/api/v3/time": "10",
-            "/api/v3/account": "5",
-            "/api/v3/openOrders": "10",
-            "/api/v3/order": "10",
-            "/api/v3/myTrades": "10",
             "/fapi/v1/time": "10",
             "/fapi/v2/account": "5",
             "/fapi/v2/positionRisk": "10",
@@ -40,6 +35,9 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             "/fapi/v1/allOrders": "10",
             "/fapi/v1/leverage": "5",
             "/fapi/v1/exchangeInfo": "10",
+            "/fapi/v1/userTrades": "50",
+            "/fapi/v1/allOpenOrders": "10",
+            "/fapi/v1/openOrder": "10",
         }
         super().__init__(
             session=session,
@@ -127,6 +125,30 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         if status_code < 400 and (code is None or code == 200):
             return True
         return False
+
+    def _extract_limit_from_headers(self, headers):
+        headers_map = {str(k).lower(): v for k, v in dict(headers).items()}
+        used_weight_1m = headers_map.get("x-mbx-used-weight-1m")
+        if used_weight_1m is None:
+            return None
+
+        try:
+            used = int(used_weight_1m)
+        except (TypeError, ValueError):
+            return None
+
+        # Binance отдает "used weight", а не текущий лимит эндпоинта.
+        # Преобразуем это в один из наших глобальных бакетов.
+        if used >= 1100:
+            return "5"
+        if used >= 900:
+            return "10"
+        if used >= 600:
+            return "20"
+        return "50"
+    
+    def update_limits(self, endpoint: str, resp_headers_limit):
+        raise NotImplemented
 
     async def _handle_error_response(self, response: dict, status_code: int, url: str):
         code = response.get("code")
