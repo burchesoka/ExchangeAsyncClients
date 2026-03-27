@@ -84,6 +84,14 @@ class BaseAsyncExchangeAPI(ABC):
     def _extract_limit_from_headers(self, headers: "aiohttp.typedefs.LooseHeaders"):
         return None
 
+    def _request_weight(
+        self,
+        endpoint: str,
+        method: str,
+        params: dict | None,
+    ) -> int:
+        return 1
+
     @abstractmethod
     def _is_success_response(self, response: dict, status_code: int) -> bool:
         """True, если ответ успешен для конкретной биржи."""
@@ -111,10 +119,20 @@ class BaseAsyncExchangeAPI(ABC):
     ):
         last_error = None
 
-        async with self._limiter_for(endpoint):
+        limiter = self._limiter_for(endpoint)
+        async with limiter:
             while retries:
                 url = ""
                 try:
+                    request_weight = int(self._request_weight(endpoint=endpoint, method=method, params=params))
+                    if request_weight < 1:
+                        request_weight = 1
+
+                    # 1 токен уже захвачен через `async with limiter`.
+                    # Для weight-based throttling добираем остальные токены.
+                    if request_weight > 1:
+                        await limiter.acquire(request_weight - 1)
+
                     url, query_params, headers, body = self._build_request_data(
                         method=method,
                         endpoint=endpoint,
@@ -130,6 +148,10 @@ class BaseAsyncExchangeAPI(ABC):
                         data=body,
                     ) as resp:
                         resp_headers_limit = self._extract_limit_from_headers(resp.headers)
+                        if isinstance(resp_headers_limit, dict):
+                            resp_headers_limit.setdefault("method", method)
+                            resp_headers_limit.setdefault("params", params or {})
+                            resp_headers_limit.setdefault("request_weight", request_weight)
                         self.update_limits(endpoint, resp_headers_limit)
                         response_data = await resp.json()
                         await self._check_response(response_data, resp.status, url)
