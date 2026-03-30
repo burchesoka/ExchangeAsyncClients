@@ -209,7 +209,6 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         time_now = time.time()
         
         max_limit = 1500
-        max_limit = 10
         candles_left = candles
 
         time_now = time.time()

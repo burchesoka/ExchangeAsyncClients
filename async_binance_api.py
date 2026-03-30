@@ -19,6 +19,10 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         self.recv_window = 15000
         self.base_url = "https://api.binance.com"
         self.futures_base_url = "https://fapi.binance.com"
+        # Смещение времени (мс), добавляется к timestamp при подписи.
+        # Логика аналогична BybitAPI.recv_window_shift: мы сознательно уводим timestamp чуть раньше,
+        # чтобы уменьшить шанс "timestamp outside of the recvWindow".
+        self.timestamp_shift = 0
         # По документации futures exchangeInfo обычно возвращает REQUEST_WEIGHT=2400/мин.
         self.request_weight_limit_1m = 2400
         self._bucket_order = ["2400", "1800", "1200", "600"]
@@ -72,7 +76,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
 
     def _sign_params(self, params: dict | None = None) -> dict:
         signed = dict(params or {})
-        signed["timestamp"] = int(time.time() * 1000)
+        signed["timestamp"] = int(time.time() * 1000) + int(self.timestamp_shift)
         signed["recvWindow"] = self.recv_window
 
         query_string = urlencode(signed, doseq=True)
@@ -83,6 +87,24 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         ).hexdigest()
         signed["signature"] = signature
         return signed
+
+    async def update_timestamp_shift(self, safety_ms: int = 2500):
+        """
+        Синхронизирует локальное время с серверным и рассчитывает timestamp_shift (мс).
+
+        По Binance нет прямого recvWindowShift заголовка как в Bybit,
+        поэтому мы корректируем timestamp при подписи запроса.
+        """
+        local_now_ms = int(time.time() * 1000)
+        server_time_resp = await self.public_get_request("/fapi/v1/time", params=None, retries=10)
+        server_time_ms = server_time_resp.get("serverTime")
+        if server_time_ms is None:
+            return
+
+        difference = local_now_ms - int(server_time_ms)
+        # Уводим timestamp раньше на safety_ms, чтобы точка попадала в recvWindow даже при дрейфе.
+        self.timestamp_shift = difference - safety_ms
+        logger.info("timestamp_shift updated: %s", self.timestamp_shift)
 
     def _auth_headers(self) -> dict:
         return {"X-MBX-APIKEY": self.api_key}
@@ -291,6 +313,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         code = response.get("code")
         msg = str(response.get("msg", ""))
         if code in (-1021,) or "timestamp for this request is outside of the recvWindow" in msg:
+            await self.update_timestamp_shift()
             raise exceptions.InvalidNonce
         if code in (-2015, -2014):
             raise exceptions.AuthenticationError
