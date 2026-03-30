@@ -303,6 +303,7 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
         }
 
     async def get_klines_history(self, symbol: str, interval: str, candles: int) -> list:
+        raise NotImplementedError
         time_now = time.time()
         start_time = int((time_now - INTERVAL_IN_SEC[interval] * candles) * 1000)
         end_time = int(time_now * 1000)
@@ -363,6 +364,8 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             "start": start,
             "end": end,
         }
+        if end is None:
+            params.pop('end')
         klines = await self.get_request("/v5/market/kline", params=params)
         klines_list = klines.get('result').get('list')
         return klines_list
@@ -372,7 +375,7 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             symbol: str,
             interval: str,
             candles: int,
-            start_time: int = None
+            start_time: int = None,
     ) -> pd.DataFrame:
         """
         :param symbol: Ticker name
@@ -383,14 +386,10 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
         """
         logger.debug("Make dataframe from klines for ticker: %s | start_time: %s", symbol, start_time)
 
-        if start_time is None:
-            start_time = int((time.time() - INTERVAL_IN_SEC[interval] * candles) * 1000)
-            end_time = int(time.time() * 1000)
-        else:
-            end_time = None
-
-        max_limit = 200
+        max_limit = 1000
         candles_left = candles
+
+        time_now = time.time()
 
         if candles > max_limit:
             klines_list = []
@@ -400,12 +399,16 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
 
             while pages:
                 limit = max_limit if pages > 1 or candles_left == max_limit else candles_left - max_limit
-                start = int((time.time() - INTERVAL_IN_SEC[interval] * candles_left) * 1000)
-
-                if pages > 1:
-                    end = int((time.time() - INTERVAL_IN_SEC[interval] * (candles - max_limit)) * 1000)
+                limit = limit if limit > 0 else max_limit + limit
+                if start_time is not None:
+                    start = int((start_time / 1000 - INTERVAL_IN_SEC[interval] * candles_left) * 1000)
                 else:
-                    end = int(time.time() * 1000)
+                    start = int((time_now - INTERVAL_IN_SEC[interval] * candles_left) * 1000)
+                end = None
+                # if pages > 1:
+                #      end = start + INTERVAL_IN_SEC[interval] * 1000 * max_limit
+                # else:
+                #     end = int(time_now * 1000)
 
                 candles_left -= max_limit
                 pages -= 1
@@ -418,6 +421,11 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
                 )
 
         else:
+            if start_time is None:
+                start_time = int((time_now - INTERVAL_IN_SEC[interval] * candles) * 1000)
+                end_time = int(time_now * 1000)
+            else:
+                end_time = None
             klines_list = await self.get_klines(
                 symbol=symbol,
                 interval=interval,
@@ -426,12 +434,8 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
                 end=end_time,
             )
 
-        data_frame = pd.DataFrame(klines_list)
-
-        try:
-            data_frame = data_frame.drop(6, axis=1)
-        except Exception:
-            pass
+        klines_list_clean = [item[:5] for item in klines_list]
+        data_frame = pd.DataFrame(klines_list_clean)
 
         try:
             data_frame = data_frame.rename(columns={
@@ -451,7 +455,7 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
         for i in data_frame.columns:
             data_frame[i] = pd.to_numeric(data_frame[i])
 
-        logger.debug('data_frame!!!@@@ %s', data_frame)
+        logger.debug('data_frame %s', data_frame)
 
         return data_frame
 

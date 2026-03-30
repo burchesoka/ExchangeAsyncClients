@@ -147,6 +147,8 @@ class BaseAsyncExchangeAPI(ABC):
                         headers=headers,
                         data=body,
                     ) as resp:
+                        logger.debug('request_weight %s %s %s %s', request_weight, method, endpoint, params)
+                        logger.debug('%s', self.limiters_dict[endpoint])
                         resp_headers_limit = self._extract_limit_from_headers(resp.headers)
                         if isinstance(resp_headers_limit, dict):
                             resp_headers_limit.setdefault("method", method)

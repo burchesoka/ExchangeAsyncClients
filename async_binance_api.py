@@ -21,6 +21,14 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         self.futures_base_url = "https://fapi.binance.com"
         # По документации futures exchangeInfo обычно возвращает REQUEST_WEIGHT=2400/мин.
         self.request_weight_limit_1m = 2400
+        self._bucket_order = ["2400", "1800", "1200", "600"]
+        # Жесткий верхний бакет для тяжелых endpoint, чтобы они не "съедали" budget.
+        self._endpoint_bucket_cap = {
+            "/sapi/v1/asset/transfer": "600",
+            "/fapi/v1/income": "1200",
+            "/fapi/v1/openOrders": "1200",  # когда symbol не передан вес=40
+            "/fapi/v1/klines": "1200",      # при больших limit вес до 10
+        }
 
         limiters = {
             "600": AsyncLimiter(600, 60),
@@ -237,7 +245,8 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         except (TypeError, ValueError):
             request_weight = 1
 
-        projected_utilization = (used_weight_1m + max(request_weight, 0)) / max_weight_1m
+        # Добавляем ограниченный буфер, чтобы не дергать бакет слишком резко.
+        projected_utilization = (used_weight_1m + min(max(request_weight, 1), 20)) / max_weight_1m
 
         # Чем выше загрузка минутного окна, тем более консервативный бакет.
         if projected_utilization >= 0.90:
@@ -248,6 +257,21 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             target_bucket = "1800"
         else:
             target_bucket = "2400"
+
+        # Cap для тяжелых запросов по весу.
+        if request_weight >= 100:
+            weight_cap_bucket = "600"
+        elif request_weight >= 30:
+            weight_cap_bucket = "1200"
+        elif request_weight >= 10:
+            weight_cap_bucket = "1800"
+        else:
+            weight_cap_bucket = "2400"
+
+        endpoint_cap_bucket = self._endpoint_bucket_cap.get(endpoint, "2400")
+        cap_idx = max(self._bucket_order.index(endpoint_cap_bucket), self._bucket_order.index(weight_cap_bucket))
+        if self._bucket_order.index(target_bucket) < cap_idx:
+            target_bucket = self._bucket_order[cap_idx]
 
         current_bucket = self.limiters_dict.get(endpoint)
         if current_bucket != target_bucket:

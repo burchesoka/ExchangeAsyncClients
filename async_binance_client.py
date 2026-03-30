@@ -176,64 +176,106 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         return symbol_info_filtered
 
     async def get_klines_history(self, symbol: str, interval: str, candles: int) -> list:
+        raise NotImplementedError
         now = int(time.time() * 1000)
         start = now - (INTERVAL_IN_SEC[interval] * candles * 1000)
         return await self.get_klines(symbol=symbol, interval=interval, limit=candles, start=start, end=now)
 
     async def get_klines(self, symbol: str, interval: str, limit: int, start: int, end: int) -> list:
-        response = await self.public_get_request(
-            "/fapi/v1/klines",
-            params={
+        params={
                 "symbol": symbol,
                 "interval": interval,
                 "limit": limit,
                 "startTime": start,
                 "endTime": end,
-            },
+            }
+        if end is None:
+            params.pop('endTime')
+        response = await self.public_get_request(
+            "/fapi/v1/klines",
+            params=params,
         )
         return response
 
     async def get_history_data_frame(
         self,
         symbol: str,
-        start_time: int | None = None,
-        end_time: int | None = None,
-        interval: str = "1m",
+        interval: str,
+        candles: int,
+        start_time: int = None,
         minutes_before: int = 30,
     ) -> pd.DataFrame:
-        if end_time is None:
-            end_time = int(time.time() * 1000)
-        if start_time is None:
-            start_time = end_time - (minutes_before * 60 * 1000)
+        logger.debug("Make dataframe from klines for ticker: %s | start_time: %s", symbol, start_time)
+        time_now = time.time()
+        
+        max_limit = 1500
+        max_limit = 10
+        candles_left = candles
 
-        data = await self.get_klines(
-            symbol=symbol,
-            interval=interval,
-            limit=1000,
-            start=start_time,
-            end=end_time,
-        )
-        if not data:
-            return pd.DataFrame()
+        time_now = time.time()
 
-        df = pd.DataFrame(
-            data,
-            columns=[
-                "open_time",
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume",
-                "close_time",
-                "qav",
-                "trades",
-                "tb_base",
-                "tb_quote",
-                "ignore",
-            ],
-        )
-        return df
+        if candles > max_limit:
+            klines_list = []
+            pages = candles // max_limit
+            if candles % max_limit:
+                pages += 1
+
+            while pages:
+                limit = max_limit if pages > 1 or candles_left == max_limit else candles_left - max_limit
+                limit = limit if limit > 0 else max_limit + limit
+                if start_time is not None:
+                    start = int((start_time / 1000 - INTERVAL_IN_SEC[interval] * candles_left) * 1000)
+                else:
+                    start = int((time_now - INTERVAL_IN_SEC[interval] * candles_left) * 1000)
+                end = None
+
+                candles_left -= max_limit
+                pages -= 1
+                klines_list += await self.get_klines(
+                    symbol=symbol,
+                    interval=interval,
+                    limit=limit,
+                    start=start,
+                    end=end
+                )
+
+        else:
+            if start_time is None:
+                start_time = int((time_now - INTERVAL_IN_SEC[interval] * candles) * 1000)
+                end_time = int(time_now * 1000)
+            else:
+                end_time = None
+            klines_list = await self.get_klines(
+                symbol=symbol,
+                interval=interval,
+                limit=candles,
+                start=start_time,
+                end=end_time,
+            )
+        klines_list_clean = [item[:5] for item in klines_list]
+        data_frame = pd.DataFrame(klines_list_clean)
+
+        try:
+            data_frame = data_frame.rename(columns={
+                0: 'open_time',
+                1: 'open',
+                2: 'high',
+                3: 'low',
+                4: 'close',
+                5: 'volume',
+            })
+            data_frame = data_frame.sort_values(by='open_time', ignore_index=True)
+
+        except Exception as e:
+            logger.critical('data_frame error %s', data_frame)
+            raise e
+
+        for i in data_frame.columns:
+            data_frame[i] = pd.to_numeric(data_frame[i])
+
+        logger.debug('data_frame %s', data_frame)
+
+        return data_frame
 
     async def new_order(
         self,
