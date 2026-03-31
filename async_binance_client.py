@@ -50,7 +50,6 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
             api_key=api_key,
             api_secret=api_secret,
         )
-        self.exchange = Exchange.bybit  # Сохраняем совместимость старого интерфейса.
 
     async def get_all_instruments_info(self) -> dict[str, InstrumentInfo]:
         response = await self.public_get_request("/fapi/v1/exchangeInfo")

@@ -86,6 +86,7 @@ class Exchange(str, Enum):
     bybit = 'bybit'
     okx = 'okx'
     bingx = 'bingx'
+    binance = 'binance'
 
 
 class InstrumentInfo(BaseModel):
