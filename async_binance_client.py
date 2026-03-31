@@ -103,7 +103,8 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
     ):
         params = {"dualSidePosition": "true" if mode == PositionMode.hedge else "false"}
         try:
-            await self.post_request("/fapi/v1/positionSide/dual", body=params)
+            resp = await self.post_request("/fapi/v1/positionSide/dual", body=params)
+            logger.debug('switch_position_mode response: %s', resp)
             return True
         except exceptions.NoChange:
             return True
@@ -461,6 +462,7 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         return None
 
     async def close_all_positions(self, symbol: str, position_data: PositionData):
+        raise NotImplementedError
         qty = abs(Decimal(position_data.size))
         if qty == Decimal("0"):
             return True

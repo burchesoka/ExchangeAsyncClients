@@ -332,6 +332,8 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             raise exceptions.OrderValidationError
         if code in (-2010,):
             raise exceptions.FailedOrder
+        if code in (-4059,):
+            raise exceptions.NoChange
         if code in (-4164,):
             raise exceptions.MinimumLimitExceeded
 
