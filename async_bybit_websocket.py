@@ -248,19 +248,19 @@ class AsyncBybitWebsocket:
 
     def create_orders_queues(self, symbols_list: list[str]):
         for symbol in symbols_list:
-            self.orders_filtered_queues[symbol] = asyncio.Queue()
+            self.orders_filtered_queues[symbol.upper()] = asyncio.Queue()
 
     def create_klines_queues(self, symbols_list: list[str]):
         for symbol in symbols_list:
-            self.klines_queues[symbol] = asyncio.Queue()
+            self.klines_queues[symbol.upper()] = asyncio.Queue()
 
     async def run_all_ws(
-            self,
-            orders: bool = False,
-            wallet: bool = False,
-            klines_topics: list[str] = None,
-            triple: bool = False,
-            test: bool = False,
+        self,
+        orders: bool = False,
+        wallet: bool = False,
+        klines_topics: list[str] = None,
+        triple: bool = False,
+        test: bool = False,
     ):
         logger.info('run_all_ws websockets ver: %s', websockets.__version__)
         loops = [
