@@ -7,8 +7,6 @@ import time
 import aiohttp
 import websockets.asyncio.client
 
-from base import INTERVAL_FROM_BYBIT_TO_MY
-
 
 logger = logging.getLogger(__name__)
 
@@ -85,19 +83,6 @@ class AsyncBinanceWebsocket:
             t = topic.strip()
             if "@kline_" in t:
                 normalized_topics.append(t.lower())
-                continue
-
-            # Поддержка bybit-формата: kline.<interval>.<symbol>
-            if t.lower().startswith("kline."):
-                parts = t.split(".")
-                if len(parts) == 3:
-                    _, interval, symbol = parts
-                    binance_interval = INTERVAL_FROM_BYBIT_TO_MY.get(interval, interval)
-                    normalized_topics.append(f"{symbol.lower()}@kline_{binance_interval}")
-                    continue
-
-            # Fallback: если передали только символ.
-            normalized_topics.append(f"{t.lower()}@kline_1m")
 
         await ws.send(
             json.dumps(
@@ -290,6 +275,6 @@ def test_binance_websocket(binance_api_key: str, binance_secret: str):
     asyncio.run(ws.run_all_ws(
         orders=True,
         wallet=False,
-        klines_topics=["kline.60.BTCUSDT", "kline.1.DOGEUSDT"],
+        klines_topics=["BTCUSDT@kline_1h", "DOGEUSDT@kline_1m"],
         triple=True
     ))

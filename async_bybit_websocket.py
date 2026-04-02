@@ -6,6 +6,8 @@ import time
 import hmac
 import websockets.asyncio.client
 
+from base import INTERVAL_FOR_BYBIT
+
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +76,27 @@ class AsyncBybitWebsocket:
 
 
     async def subscribe_public(self, ws, klines_topics: list[str]):
+        normalized_topics = []
+        for topic in klines_topics:
+            t = topic.strip()
+            # Стандартный формат: BTCUSDT@kline_1h
+            if "@kline_" in t:
+                symbol, interval = t.split("@kline_", 1)
+                bybit_interval = INTERVAL_FOR_BYBIT.get(interval, interval)
+                normalized_topics.append(f"kline.{bybit_interval}.{symbol.upper()}")
+                continue
+
+            # Legacy fallback: уже bybit формат
+            if t.lower().startswith("kline."):
+                normalized_topics.append(t)
+                continue
+
+            # Fallback: только символ -> 1m
+            normalized_topics.append(f"kline.1.{t.upper()}")
+
         subs = dict(
             op='subscribe',
-            args=klines_topics
+            args=normalized_topics
         )
         await ws.send(json.dumps(subs))
 
@@ -252,6 +272,6 @@ def test_bybit_websocket(bybit_api_key: str, bybit_secret: str):
     asyncio.run(ws.run_all_ws(
         orders=True,
         wallet=False,
-        klines_topics=["kline.60.BTCUSDT", "kline.1.DOGEUSDT"],
+        klines_topics=["BTCUSDT@kline_1h", "DOGEUSDT@kline_1m"],
         triple=True
     ))
