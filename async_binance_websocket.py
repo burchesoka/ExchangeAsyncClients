@@ -31,6 +31,27 @@ class AsyncBinanceWebsocket:
         self.orders_items = []
         self.orders_filtered_queues = {}
 
+    @staticmethod
+    def _normalize_kline(symbol: str, raw) -> dict:
+        # Binance kline payload обычно в raw["k"]
+        k = raw.get("k", raw) if isinstance(raw, dict) else {}
+        if not isinstance(k, dict):
+            return {}
+        return {
+            "symbol": symbol.upper(),
+            "interval": str(k.get("i", "")),
+            "start": int(k.get("t", 0) or 0),
+            "end": int(k.get("T", 0) or 0),
+            "open": str(k.get("o", "0")),
+            "high": str(k.get("h", "0")),
+            "low": str(k.get("l", "0")),
+            "close": str(k.get("c", "0")),
+            "volume": str(k.get("v", "0")),
+            "turnover": str(k.get("q", "0")),
+            "confirm": bool(k.get("x", False)),
+            "timestamp": int(raw.get("E", 0) or 0) if isinstance(raw, dict) else 0,
+        }
+
     async def _create_listen_key(self, session: aiohttp.ClientSession) -> str:
         headers = {"X-MBX-APIKEY": self.api_key}
         async with session.post(f"{FAPI_BASE_URL}/fapi/v1/listenKey", headers=headers) as resp:
@@ -185,16 +206,18 @@ class AsyncBinanceWebsocket:
 
                 async for raw_msg in ws:
                     msg = json.loads(raw_msg)
-                    logger.debug(msg)
+                    # logger.debug(msg)
 
-                    stream = msg.get("stream", "")
-                    data = msg.get("data")
-                    if not stream or data is None:
+                    stream = msg.get("e", "") or msg.get("stream", "")
+                    if not stream:
                         continue
 
-                    if "@kline_" in stream:
-                        symbol = stream.split("@", 1)[0].upper()
-                        await self.klines_queues[symbol].put(data)
+                    if "kline" in stream:
+                        data = msg.get("k")
+                        symbol = data.get("s").upper()
+                        normalized = self._normalize_kline(symbol=symbol, raw=data)
+                        if normalized:
+                            await self.klines_queues[symbol].put(normalized)
 
             except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedError):
                 continue
@@ -264,7 +287,27 @@ class AsyncBinanceWebsocket:
         if klines_topics:
             loops.append(self.public_ws(klines_topics))
 
+
+        
+
+
+        loops.append(self.get_klines_test())
+        loops.append(self.get_orders_test())
+
+
+
+        
         await asyncio.gather(*loops)
+    
+    async def get_klines_test(self):
+        while True:
+            klines = await self.klines_queues['BTCUSDT'].get()
+            logger.info(f'!!!!!!!!!---- {klines}')
+
+    async def get_orders_test(self):
+        while True:
+            klines = await self.orders_filtered_queues['HYPEUSDT'].get()
+            logger.info(f'@@@@@@@---- {klines}')
 
 
 def test_binance_websocket(binance_api_key: str, binance_secret: str):

@@ -42,6 +42,26 @@ class AsyncBybitWebsocket:
 
         self.orders_filtered_queues = {}
 
+    @staticmethod
+    def _normalize_kline(symbol: str, raw) -> dict:
+        item = raw[0] if isinstance(raw, list) and raw else raw
+        if not isinstance(item, dict):
+            return {}
+        return {
+            "symbol": symbol.upper(),
+            "interval": str(item.get("interval", "")),
+            "start": int(item.get("start", 0) or 0),
+            "end": int(item.get("end", 0) or 0),
+            "open": str(item.get("open", "0")),
+            "high": str(item.get("high", "0")),
+            "low": str(item.get("low", "0")),
+            "close": str(item.get("close", "0")),
+            "volume": str(item.get("volume", "0")),
+            "turnover": str(item.get("turnover", "0")),
+            "confirm": bool(item.get("confirm", False)),
+            "timestamp": int(item.get("timestamp", 0) or 0),
+        }
+
     async def sign_in_ws(self, ws):
         # Generate expires.
         expires = int((time.time() + 1) * 1000)
@@ -181,7 +201,9 @@ class AsyncBybitWebsocket:
                         if msg.get('topic') and 'kline' in msg.get('topic'):
                             symbol = msg['topic'].replace('kline.', '')
                             symbol = symbol[symbol.find('.') + 1:]
-                            await self.klines_queues[symbol].put(data)
+                            normalized = self._normalize_kline(symbol=symbol, raw=data)
+                            if normalized:
+                                await self.klines_queues[symbol].put(normalized)
                     except Exception as e:
                         logger.critical('Unknown error %s', e.args)
                         raise e
