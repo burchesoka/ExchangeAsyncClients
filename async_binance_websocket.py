@@ -1,11 +1,10 @@
 import asyncio
 import copy
-import hashlib
-import hmac
 import json
 import logging
 import time
 
+import aiohttp
 import websockets.asyncio.client
 
 
@@ -13,8 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 WSS_NAME = "Binance Futures"
-PRIVATE_WSS = "wss://ws-fapi.binance.com/ws-fapi/v1"
+PRIVATE_WSS = "wss://fstream.binance.com/ws/{listen_key}"
 PUBLIC_WSS = "wss://fstream.binance.com/ws"
+FAPI_BASE_URL = "https://fapi.binance.com"
 
 
 class AsyncBinanceWebsocket:
@@ -31,46 +31,51 @@ class AsyncBinanceWebsocket:
         self.orders_items = []
         self.orders_filtered_queues = {}
 
-    async def sign_in_ws(self, ws):
-        timestamp = int(time.time() * 1000)
-        payload = {
-            "apiKey": self.api_key,
-            "timestamp": timestamp,
-        }
-        query = "&".join(f"{k}={payload[k]}" for k in sorted(payload))
-        signature = hmac.new(
-            bytes(self.api_secret, "utf-8"),
-            bytes(query, "utf-8"),
-            digestmod=hashlib.sha256,
-        ).hexdigest()
-        payload["signature"] = signature
-        await ws.send(
-            json.dumps({
-                "id": str(timestamp),
-                "method": "session.logon",
-                "params": payload,
-            })
-        )
+    async def _create_listen_key(self, session: aiohttp.ClientSession) -> str:
+        headers = {"X-MBX-APIKEY": self.api_key}
+        async with session.post(f"{FAPI_BASE_URL}/fapi/v1/listenKey", headers=headers) as resp:
+            data = await resp.json()
+            listen_key = data.get("listenKey")
+            if not listen_key:
+                raise RuntimeError(f"Can't create listenKey: {data}")
+            return listen_key
 
-    async def subscribe_private(self, ws, orders: bool, wallet: bool):
-        if not any([orders, wallet]):
-            raise ValueError
+    async def _keepalive_listen_key(
+        self,
+        session: aiohttp.ClientSession,
+        listen_key: str,
+        stop_event: asyncio.Event,
+    ):
+        headers = {"X-MBX-APIKEY": self.api_key}
+        while not stop_event.is_set():
+            try:
+                await asyncio.sleep(30 * 60)
+                if stop_event.is_set():
+                    return
+                async with session.put(
+                    f"{FAPI_BASE_URL}/fapi/v1/listenKey",
+                    headers=headers,
+                    params={"listenKey": listen_key},
+                ) as resp:
+                    if resp.status >= 400:
+                        data = await resp.text()
+                        logger.warning("listenKey keepalive failed: status=%s body=%s", resp.status, data)
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                logger.warning("listenKey keepalive error: %s", e)
 
-        topics = []
-        if orders:
-            topics.append("ORDER_TRADE_UPDATE")
-        if wallet:
-            topics.append("ACCOUNT_UPDATE")
-
-        await ws.send(
-            json.dumps(
-                {
-                    "id": str(int(time.time() * 1000)),
-                    "method": "userDataStream.subscribe",
-                    "params": {"topics": topics},
-                }
-            )
-        )
+    async def _close_listen_key(self, session: aiohttp.ClientSession, listen_key: str):
+        headers = {"X-MBX-APIKEY": self.api_key}
+        try:
+            async with session.delete(
+                f"{FAPI_BASE_URL}/fapi/v1/listenKey",
+                headers=headers,
+                params={"listenKey": listen_key},
+            ):
+                return
+        except Exception as e:
+            logger.debug("listenKey close failed: %s", e)
 
     async def subscribe_public(self, ws, klines_topics: list[str]):
         await ws.send(
@@ -84,41 +89,82 @@ class AsyncBinanceWebsocket:
         )
 
     async def private_ws(self, orders: bool, wallet: bool):
-        async for ws in websockets.asyncio.client.connect(
-            PRIVATE_WSS,
-            ping_interval=45,
-        ):
-            if not any([orders, wallet]):
-                raise ValueError
+        if not any([orders, wallet]):
+            raise ValueError
 
-            try:
-                logger.info("Private WS Connected")
-                await self.sign_in_ws(ws)
+        headers = {"X-MBX-APIKEY": self.api_key}
+        async with aiohttp.ClientSession(headers=headers) as session:
+            while True:
+                keepalive_task = None
+                stop_event = asyncio.Event()
+                listen_key = None
+                try:
+                    listen_key = await self._create_listen_key(session)
+                    url = PRIVATE_WSS.format(listen_key=listen_key)
+                    logger.info("Private WS listenKey created")
 
-                async for raw_msg in ws:
-                    msg = json.loads(raw_msg)
-                    logger.info("Private WS msg: %s", msg)
+                    keepalive_task = asyncio.create_task(
+                        self._keepalive_listen_key(session, listen_key, stop_event)
+                    )
 
-                    if msg.get("status") == 200 and msg.get("result", {}).get("authorizedSince"):
-                        await self.subscribe_private(ws, orders=orders, wallet=wallet)
-                        continue
+                    async for ws in websockets.asyncio.client.connect(
+                        url,
+                        ping_interval=45,
+                    ):
+                        try:
+                            logger.info("Private WS Connected")
+                            async for raw_msg in ws:
+                                msg = json.loads(raw_msg)
+                                logger.info("Private WS msg: %s", msg)
 
-                    event_type = msg.get("e") or msg.get("event", {}).get("e")
-                    if event_type == "ORDER_TRADE_UPDATE" and orders:
-                        payload = msg.get("o") or msg.get("event", {}).get("o") or msg
-                        await self.orders_queue.put([payload] if isinstance(payload, dict) else payload)
-                    elif event_type == "ACCOUNT_UPDATE" and wallet:
-                        await self.wallet_queue.put(msg)
+                                event_type = msg.get("e")
+                                if event_type == "ORDER_TRADE_UPDATE" and orders:
+                                    payload = msg.get("o") or msg
+                                    await self.orders_queue.put([payload] if isinstance(payload, dict) else payload)
+                                elif event_type == "ACCOUNT_UPDATE" and wallet:
+                                    await self.wallet_queue.put(msg)
+                                elif event_type == "listenKeyExpired":
+                                    logger.warning("listenKey expired, reconnecting")
+                                    break
 
-            except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedError) as e:
-                logger.info("Reconnect private WS (%s)", e)
-                continue
-            except asyncio.exceptions.CancelledError:
-                logger.info("Connection disconnected by keyboard interrupt")
-                break
-            except Exception as e:
-                logger.exception(e)
-                break
+                        except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedError) as e:
+                            logger.info("Reconnect private WS (%s)", e)
+                            continue
+                        except asyncio.exceptions.CancelledError:
+                            logger.info("Connection disconnected by keyboard interrupt")
+                            raise
+                        except Exception as e:
+                            logger.exception(e)
+                            break
+
+                    # break async for connect loop and recreate listen key
+                    stop_event.set()
+                    if keepalive_task:
+                        keepalive_task.cancel()
+                        await asyncio.gather(keepalive_task, return_exceptions=True)
+                    if listen_key:
+                        await self._close_listen_key(session, listen_key)
+                    continue
+
+                except asyncio.CancelledError:
+                    stop_event.set()
+                    if keepalive_task:
+                        keepalive_task.cancel()
+                        await asyncio.gather(keepalive_task, return_exceptions=True)
+                    if listen_key:
+                        await self._close_listen_key(session, listen_key)
+                    logger.info("Private WS Disconnected")
+                    break
+                except Exception as e:
+                    stop_event.set()
+                    if keepalive_task:
+                        keepalive_task.cancel()
+                        await asyncio.gather(keepalive_task, return_exceptions=True)
+                    if listen_key:
+                        await self._close_listen_key(session, listen_key)
+                    logger.exception(e)
+                    await asyncio.sleep(1)
+                    continue
 
         logger.info("Private WS Disconnected")
 
