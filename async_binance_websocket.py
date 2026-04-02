@@ -7,6 +7,7 @@ import time
 import aiohttp
 import websockets.asyncio.client
 
+from base import OrderData
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,29 @@ class AsyncBinanceWebsocket:
             "confirm": bool(k.get("x", False)),
             "timestamp": int(raw.get("E", 0) or 0) if isinstance(raw, dict) else 0,
         }
+
+    @staticmethod
+    def _normalize_order(raw: dict) -> OrderData:
+        now_ms = int(time.time() * 1000)
+        payload = {
+            "orderId": str(raw.get("i", raw.get("orderId", ""))),
+            "symbol": raw.get("s", raw.get("symbol", "")),
+            "orderType": raw.get("o", raw.get("type", "MARKET")),
+            "qty": str(raw.get("q", raw.get("origQty", "0"))),
+            "cumExecQty": str(raw.get("z", raw.get("executedQty", "0"))),
+            "side": raw.get("S", raw.get("side", "")),
+            "price": str(raw.get("p", raw.get("price", "0"))),
+            "avgPrice": str(raw.get("ap", raw.get("avgPrice", "0"))),
+            "stopLoss": str(raw.get("sp", raw.get("stopPrice", "0"))),
+            "takeProfit": str(raw.get("sp", raw.get("stopPrice", "0"))),
+            "orderStatus": raw.get("X", raw.get("status", "NEW")),
+            "createdTime": str(raw.get("T", raw.get("time", now_ms))),
+            "updatedTime": str(raw.get("t", raw.get("updateTime", now_ms))),
+            "leavesQty": "0",
+        }
+        order = OrderData.model_validate(payload)
+        order.customize()
+        return order
 
     async def _create_listen_key(self, session: aiohttp.ClientSession) -> str:
         headers = {"X-MBX-APIKEY": self.api_key}
@@ -239,13 +263,17 @@ class AsyncBinanceWebsocket:
                     orders_by_symbol = {}
                     logger.debug(items_copy)
                     for order in items_copy:
-                        symbol = order.get("s") or order.get("symbol")
-                        if not symbol:
+                        try:
+                            order_data = self._normalize_order(order)
+                        except Exception as e:
+                            logger.error("Failed to parse Binance order message: %s | order=%s", e, order)
+                            raise e
                             continue
+                        symbol = order_data.symbol
                         if symbol in orders_by_symbol:
-                            orders_by_symbol[symbol].append(order)
+                            orders_by_symbol[symbol].append(order_data)
                         else:
-                            orders_by_symbol[symbol] = [order]
+                            orders_by_symbol[symbol] = [order_data]
 
                     for k, v in orders_by_symbol.items():
                         try:

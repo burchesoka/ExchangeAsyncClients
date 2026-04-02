@@ -6,7 +6,7 @@ import time
 import hmac
 import websockets.asyncio.client
 
-from base import INTERVAL_FOR_BYBIT
+from base import INTERVAL_FOR_BYBIT, OrderData
 
 
 logger = logging.getLogger(__name__)
@@ -228,11 +228,19 @@ class AsyncBybitWebsocket:
                     orders_by_symbol = {}
                     logger.debug(items_copy)
                     for order in items_copy:
-                        symbol = order['symbol']
+                        try:
+                            order_data = OrderData.model_validate(order)
+                            order_data.customize()
+                        except Exception as e:
+                            logger.error("Failed to parse Bybit order message: %s | order=%s", e, order)
+                            raise e
+                            continue
+
+                        symbol = order_data.symbol
                         if symbol in orders_by_symbol.keys():
-                            orders_by_symbol[symbol].append(order)
+                            orders_by_symbol[symbol].append(order_data)
                         else:
-                            orders_by_symbol[symbol] = [order]
+                            orders_by_symbol[symbol] = [order_data]
                     for k, v in orders_by_symbol.items():
                         try:
                             await self.orders_filtered_queues[k].put(v)
