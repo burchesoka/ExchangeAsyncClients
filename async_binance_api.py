@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class BinanceAPI(BaseAsyncExchangeAPI):
-    def __init__(self, session: aiohttp.ClientSession, api_secret: str, api_key: str):
+    def __init__(self, session: aiohttp.ClientSession, api_secret: str, api_key: str, broker_id: str | None = None):
         self.recv_window = 15000
         self.base_url = "https://api.binance.com"
         self.futures_base_url = "https://fapi.binance.com"

@@ -38,6 +38,7 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         api_key: str | None = None,
         api_secret: str | None = None,
         password: str | None = None,
+        broker_id: str | None = None,
     ):
         BaseAsyncFuturesClient.__init__(
             self,
@@ -50,6 +51,7 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
             session=session,
             api_key=api_key,
             api_secret=api_secret,
+            broker_id=broker_id,
         )
 
     async def get_all_instruments_info(self) -> dict[str, InstrumentInfo]:
@@ -83,7 +85,11 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         account_info = await self.get_account_info()
         return account_info.get("accountAlias")
 
-    async def get_wallet_data(self) -> WalletData:
+    async def get_wallet_data(
+        self,
+        logs_enabled: bool = True,
+        retries: int = 25,
+        ) -> WalletData:
         response = await self.get_account_info()
         wallet_balance = Decimal(str(response.get("totalWalletBalance", "0")))
         available_balance = Decimal(str(response.get("availableBalance", "0")))
