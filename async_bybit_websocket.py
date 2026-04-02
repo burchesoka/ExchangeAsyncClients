@@ -259,7 +259,8 @@ class AsyncBybitWebsocket:
             orders: bool = False,
             wallet: bool = False,
             klines_topics: list[str] = None,
-            triple: bool = False
+            triple: bool = False,
+            test: bool = False,
     ):
         logger.info('run_all_ws websockets ver: %s', websockets.__version__)
         loops = [
@@ -272,6 +273,10 @@ class AsyncBybitWebsocket:
                 loops.append(self.private_ws(orders, wallet))
         if klines_topics:
             loops.append(self.public_ws(klines_topics))
+
+        if test:
+            loops.append(self.get_klines_test())
+            loops.append(self.get_orders_test())
 
         await asyncio.gather(*loops)
 
@@ -295,5 +300,6 @@ def test_bybit_websocket(bybit_api_key: str, bybit_secret: str):
         orders=True,
         wallet=False,
         klines_topics=["BTCUSDT@kline_1h", "DOGEUSDT@kline_1m"],
-        triple=True
+        triple=True,
+        test=True
     ))

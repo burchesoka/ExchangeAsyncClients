@@ -274,6 +274,7 @@ class AsyncBinanceWebsocket:
         wallet: bool = False,
         klines_topics: list[str] = None,
         triple: bool = False,
+        test: bool = False,
     ):
         logger.info("run_all_ws websockets ver: %s", websockets.__version__)
         loops = [
@@ -287,27 +288,21 @@ class AsyncBinanceWebsocket:
         if klines_topics:
             loops.append(self.public_ws(klines_topics))
 
+        if test:
+            loops.append(self.get_klines_test())
+            loops.append(self.get_orders_test())
 
-        
-
-
-        loops.append(self.get_klines_test())
-        loops.append(self.get_orders_test())
-
-
-
-        
         await asyncio.gather(*loops)
     
     async def get_klines_test(self):
         while True:
             klines = await self.klines_queues['BTCUSDT'].get()
-            logger.info(f'!!!!!!!!!---- {klines}')
+            print(f'!!!!!!!!!---- {klines}')
 
     async def get_orders_test(self):
         while True:
             klines = await self.orders_filtered_queues['HYPEUSDT'].get()
-            logger.info(f'@@@@@@@---- {klines}')
+            print(f'@@@@@@@---- {klines}')
 
 
 def test_binance_websocket(binance_api_key: str, binance_secret: str):
@@ -319,5 +314,6 @@ def test_binance_websocket(binance_api_key: str, binance_secret: str):
         orders=True,
         wallet=False,
         klines_topics=["BTCUSDT@kline_1h", "DOGEUSDT@kline_1m"],
-        triple=True
+        triple=True,
+        test=True
     ))
