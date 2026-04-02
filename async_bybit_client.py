@@ -285,7 +285,7 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             return False
 
 
-    async def get_instrument_info(self, symbol: str) -> dict:
+    async def get_instrument_info(self, symbol: str) -> InstrumentInfo:
         logger.debug('get_instrument_info: gets exchange info for symbol: %s', symbol)
 
         params = {
@@ -301,12 +301,12 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
         price_info = instrument_info.get('result').get('list')[0]['priceFilter']
         symbol = instrument_info.get('result').get('list')[0]['symbol']
         lot_size_info = instrument_info.get('result').get('list')[0]['lotSizeFilter']
-        return {
-            'symbol': symbol,
-            'min_qty': lot_size_info['minOrderQty'],
-            'tick_size': price_info['tickSize'],
-            'contract_value': '1',
-        }
+        return InstrumentInfo(
+            symbol=symbol,
+            min_order_qty=lot_size_info['minOrderQty'],
+            tick_size=price_info['tickSize'],
+            contract_value='1',
+        )
 
     async def get_klines_history(self, symbol: str, interval: str, candles: int) -> list:
         raise NotImplementedError

@@ -96,8 +96,11 @@ class Exchange(str, Enum):
 
 class InstrumentInfo(BaseModel):
     symbol: str
-    min_order_qty: Decimal = Field(validation_alias=AliasChoices('minOrderQty', 'min_order_qty'))
+    min_order_qty: Decimal = Field(
+        validation_alias=AliasChoices('minOrderQty', 'min_order_qty', 'min_qty')
+    )
     tick_size: Decimal = Field(validation_alias=AliasChoices('tickSize', 'tick_size'))
+    contract_value: Decimal = Decimal('1')
 
 
 class WalletData(BaseModel):
@@ -152,7 +155,7 @@ class PositionData(BaseModel):
     def customize(self):
         self.symbol = self.symbol.replace('-', '')
         self.size = abs(self.size)
-        
+
         if 'LONG' in self.side.upper():
             self.side = 'BUY'
         elif 'SHORT' in self.side.upper():
@@ -287,7 +290,7 @@ class BaseAsyncFuturesClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def get_instrument_info(self, symbol: str) -> dict:
+    async def get_instrument_info(self, symbol: str) -> InstrumentInfo:
         raise NotImplementedError
 
     @abstractmethod

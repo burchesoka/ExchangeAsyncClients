@@ -153,19 +153,22 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         except exceptions.NoChange:
             return True
 
-    async def get_instrument_info(self, symbol: str) -> dict:
+    async def get_instrument_info(self, symbol: str) -> InstrumentInfo:
         response = await self.public_get_request("/fapi/v1/exchangeInfo")
-
         symbols = response.pop("symbols", [])
 
         if not symbols:
             raise exceptions.NotFound(symbol)
-        
+
+        symbol_info = None
         for s in symbols:
             if s.get("symbol") == symbol:
                 symbol_info = s
                 break
-        symbol_info_filtered = {
+        if symbol_info is None:
+            raise exceptions.NotFound(symbol)
+
+        symbol_info_filtered: dict = {
             "symbol": symbol,
             'contract_value': '1',
         }
@@ -174,7 +177,9 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
                 symbol_info_filtered["min_qty"] = filter["minQty"]
             elif filter["filterType"] == "PRICE_FILTER":
                 symbol_info_filtered["tick_size"] = filter["tickSize"]
-        return symbol_info_filtered
+        if "min_qty" not in symbol_info_filtered or "tick_size" not in symbol_info_filtered:
+            raise exceptions.NotFound(symbol)
+        return InstrumentInfo.model_validate(symbol_info_filtered)
 
     async def get_klines_history(self, symbol: str, interval: str, candles: int) -> list:
         raise NotImplementedError
