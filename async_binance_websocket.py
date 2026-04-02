@@ -7,6 +7,8 @@ import time
 import aiohttp
 import websockets.asyncio.client
 
+from base import INTERVAL_FROM_BYBIT_TO_MY
+
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +80,30 @@ class AsyncBinanceWebsocket:
             logger.debug("listenKey close failed: %s", e)
 
     async def subscribe_public(self, ws, klines_topics: list[str]):
+        normalized_topics = []
+        for topic in klines_topics:
+            t = topic.strip()
+            if "@kline_" in t:
+                normalized_topics.append(t.lower())
+                continue
+
+            # Поддержка bybit-формата: kline.<interval>.<symbol>
+            if t.lower().startswith("kline."):
+                parts = t.split(".")
+                if len(parts) == 3:
+                    _, interval, symbol = parts
+                    binance_interval = INTERVAL_FROM_BYBIT_TO_MY.get(interval, interval)
+                    normalized_topics.append(f"{symbol.lower()}@kline_{binance_interval}")
+                    continue
+
+            # Fallback: если передали только символ.
+            normalized_topics.append(f"{t.lower()}@kline_1m")
+
         await ws.send(
             json.dumps(
                 {
                     "method": "SUBSCRIBE",
-                    "params": klines_topics,
+                    "params": normalized_topics,
                     "id": int(time.time() * 1000),
                 }
             )
