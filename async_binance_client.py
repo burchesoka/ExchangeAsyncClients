@@ -74,7 +74,7 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         return await self.get_request("/fapi/v2/account")
 
     async def is_master_trader_account(self):
-        return False
+        raise NotImplementedError
 
     async def get_api_key_info(self):
         return await self.get_request("/sapi/v1/account/apiRestrictions")
