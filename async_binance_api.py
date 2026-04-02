@@ -167,7 +167,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             return 1
         if endpoint == "/sapi/v1/asset/transfer":
             # Weight(UID) = 900. Используем как высокий вес для консервативного throttling.
-            return 900
+            return 300
 
         return 1
 
@@ -318,6 +318,8 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             raise exceptions.InvalidNonce
         if code in (-2015, -2014):
             raise exceptions.AuthenticationError
+        if code in (-1002,):
+            raise exceptions.NoNeededPermissions
         if code in (-2019,):
             raise exceptions.MarginInsufficient
         if code in (-1015, -1003) or "too many requests" in msg.lower():

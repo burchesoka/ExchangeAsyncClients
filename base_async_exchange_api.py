@@ -131,7 +131,13 @@ class BaseAsyncExchangeAPI(ABC):
                     # 1 токен уже захвачен через `async with limiter`.
                     # Для weight-based throttling добираем остальные токены.
                     if request_weight > 1:
-                        await limiter.acquire(request_weight - 1)
+                        remaining = request_weight - 1
+                        max_chunk = int(getattr(limiter, "max_rate", 1)) or 1
+                        logger.debug("acquire remaining=%s max_chunk=%s", remaining, max_chunk)
+                        while remaining > 0:
+                            chunk = min(remaining, max_chunk)
+                            await limiter.acquire(chunk)
+                            remaining -= chunk
 
                     url, query_params, headers, body = self._build_request_data(
                         method=method,

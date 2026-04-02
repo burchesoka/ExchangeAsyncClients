@@ -114,6 +114,8 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         transfer_map = {
             ("SPOT", "USDT_FUTURE"): "MAIN_UMFUTURE",
             ("USDT_FUTURE", "SPOT"): "UMFUTURE_MAIN",
+            ("CONTRACT", "FUND"): "UMFUTURE_FUNDING",
+            ("FUND", "CONTRACT"): "FUNDING_UMFUTURE",
         }
         transfer_type = transfer_map.get((from_account, to_account))
         if transfer_type is None:
