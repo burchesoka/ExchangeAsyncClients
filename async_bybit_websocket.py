@@ -244,8 +244,8 @@ class AsyncBybitWebsocket:
             print(f'@@@@@@@---- {klines}')
 
 
-def test_websocket(bybit_api_key: str, bybit_secret: str):
-    ws = BybitWebsocket(api_key=bybit_api_key, api_secret=bybit_secret)
+def test_bybit_websocket(bybit_api_key: str, bybit_secret: str):
+    ws = AsyncBybitWebsocket(api_key=bybit_api_key, api_secret=bybit_secret)
     ws.create_orders_queues(['HYPEUSDT'])
     ws.create_klines_queues(['BTCUSDT', 'DOGEUSDT'])
 

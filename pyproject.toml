@@ -25,6 +25,7 @@ py-modules = [
     "async_bybit_websocket",
     "async_bybit_client",
     "async_binance_api",
+    "async_binance_websocket",
     "async_binance_client",
 ]
 
