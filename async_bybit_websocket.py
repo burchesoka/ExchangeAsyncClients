@@ -43,6 +43,20 @@ class AsyncBybitWebsocket:
         self.orders_filtered_queues = {}
 
     @staticmethod
+    def _normalize_order_payload(order: dict) -> dict:
+        payload = dict(order)
+        # Bybit иногда присылает пустые строки для TP/SL, а OrderData ждет Decimal.
+        if payload.get("takeProfit", None) in ("", None):
+            payload["takeProfit"] = "0"
+        if payload.get("stopLoss", None) in ("", None):
+            payload["stopLoss"] = "0"
+        if payload.get("avgPrice", None) in ("", None):
+            payload["avgPrice"] = "0"
+        if payload.get("price", None) in ("", None):
+            payload["price"] = "0"
+        return payload
+
+    @staticmethod
     def _normalize_kline(symbol: str, raw) -> dict:
         item = raw[0] if isinstance(raw, list) and raw else raw
         if not isinstance(item, dict):
@@ -229,7 +243,8 @@ class AsyncBybitWebsocket:
                     logger.debug(items_copy)
                     for order in items_copy:
                         try:
-                            order_data = OrderData.model_validate(order)
+                            normalized = self._normalize_order_payload(order)
+                            order_data = OrderData.model_validate(normalized)
                             order_data.customize()
                         except Exception as e:
                             logger.error("Failed to parse Bybit order message: %s | order=%s", e, order)
