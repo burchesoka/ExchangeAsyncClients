@@ -467,22 +467,21 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
             pnl = PNLData.model_validate(payload)
             pnl.customize()
             results.append(pnl)
+        results.reverse()
         return results
 
     async def get_closed_pnls_list(
         self,
-        symbol: str | None = None,
-        start_time: int | None = None,
-        end_time: int | None = None,
-        limit: int = 1000,
-        custom_filter: Callable[[PNLData], bool] | None = None,
+        start_time: int = None,
+        end_time: int = None,
+        symbol: str = None,
+        order_id: str = None,
     ) -> list[PNLData]:
         pnls = await self.get_closed_pnl_history(
             symbol=symbol,
             start_time=start_time,
             end_time=end_time,
-            limit=limit,
         )
-        if custom_filter is not None:
-            pnls = [item for item in pnls if custom_filter(item)]
+        # if order_id is not None:
+        #     pnls = [item for item in pnls if custom_filter(item)]
         return pnls
