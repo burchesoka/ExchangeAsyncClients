@@ -11,6 +11,7 @@ from .base import (
     SavePnlsAndGetFeeResponse,
 )
 from .async_bybit_client import AsyncBybitFuturesClient
+from .async_bybit_websocket import AsyncBybitWebsocket
 from .async_binance_client import AsyncBinanceFuturesClient
 
 __all__ = [
@@ -25,5 +26,6 @@ __all__ = [
     "PNLData",
     "SavePnlsAndGetFeeResponse",
     "AsyncBybitFuturesClient",
+    "AsyncBybitWebsocket",
     "AsyncBinanceFuturesClient",
 ]

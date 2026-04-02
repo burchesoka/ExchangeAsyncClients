@@ -22,6 +22,7 @@ py-modules = [
     "base_async_exchange_api",
     "exceptions",
     "async_bybit_api",
+    "async_bybit_websocket",
     "async_bybit_client",
     "async_binance_api",
     "async_binance_client",
