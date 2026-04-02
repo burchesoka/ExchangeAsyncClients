@@ -82,6 +82,11 @@ class PositionMode(str, Enum):
     hedge = 'hedge'
 
 
+class MarginMode(str, Enum):
+    cross = 'cross'
+    isolated = 'isolated'
+
+
 class Exchange(str, Enum):
     bybit = 'bybit'
     okx = 'okx'
@@ -146,6 +151,8 @@ class PositionData(BaseModel):
 
     def customize(self):
         self.symbol = self.symbol.replace('-', '')
+        self.size = abs(self.size)
+        
         if 'LONG' in self.side.upper():
             self.side = 'BUY'
         elif 'SHORT' in self.side.upper():

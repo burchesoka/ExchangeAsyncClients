@@ -15,6 +15,7 @@ import exceptions
 from base import (
     BaseAsyncFuturesClient,
     INTERVAL_IN_SEC,
+    MarginMode,
     PositionData,
     OrderData,
     InstrumentInfo,
@@ -182,7 +183,12 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             logger.warning('Transfer unable %s', response)
             raise exceptions.TransferUnable
 
-    async def switch_position_mode(self, mode: PositionMode, symbol: str = None, coin: str = None):
+    async def switch_position_mode(
+        self,
+        mode: PositionMode,
+        symbol: str = None,
+        coin: str = None
+    ):
         if not any([coin, symbol]):
             logger.critical('coin and symbol cannot be both empty')
             raise ValueError
@@ -255,16 +261,16 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
         resp = await self.post_request("/v5/account/set-margin-mode", body=params)
         logger.info(resp)
 
-    async def switch_margin_mode(self, symbol: str, margin_mode: str, leverage: float) -> bool:
+    async def switch_margin_mode(self, symbol: str, margin_mode: MarginMode, leverage: float) -> bool:
         """
-        margin_mode: CROSS or ISOLATED
+        Unified account is forbidden to switch margin mode
         """
         return True
 
         params = {
             "category": "linear",
             "symbol": symbol,
-            "tradeMode": "0" if margin_mode.upper() == 'CROSS' else "1",
+            "tradeMode": "0" if margin_mode == MarginMode.cross else "1",
             "buyLeverage": str(leverage),
             "sellLeverage": str(leverage),
         }
@@ -376,9 +382,8 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             interval: str,
             candles: int,
             start_time: int = None,
+            max_limit: int = 1000,
     ) -> pd.DataFrame:
-
-        max_limit = 10
         return await super().get_history_data_frame(symbol, interval, candles, start_time, max_limit)
 
     async def new_order(
@@ -814,7 +819,8 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             if pos.get('side').upper() == side:
                 position = pos
                 break
-            elif (empty_available and pos.get('side') == ''):
+            elif (empty_available and (pos.get('positionIdx') == 2 and side == 'SELL') or (pos.get('positionIdx') == 1 and side == 'BUY')):
+                """ 'positionIdx': 2 is for SELL position 'positionIdx': 1 is for BUY position"""
                 zero_position = pos
 
         if position is None:

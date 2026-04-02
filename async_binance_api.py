@@ -310,6 +310,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             self.limiters_dict[endpoint] = target_bucket
 
     async def _handle_error_response(self, response: dict, status_code: int, url: str):
+        # logger.debug("Binance API error. url=%s status=%s response=%s", url, status_code, response)
         code = response.get("code")
         msg = str(response.get("msg", ""))
         if code in (-1021,) or "timestamp for this request is outside of the recvWindow" in msg:
@@ -332,7 +333,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             raise exceptions.OrderValidationError
         if code in (-2010,):
             raise exceptions.FailedOrder
-        if code in (-4059,):
+        if code in (-4059, -4046):
             raise exceptions.NoChange
         if code in (-4164,):
             raise exceptions.MinimumLimitExceeded

@@ -15,6 +15,7 @@ from base import (
     Exchange,
     ExecutionsData,
     InstrumentInfo,
+    MarginMode,
     OrderData,
     ORDER_SPECS,
     PNLData,
@@ -143,9 +144,9 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         _ = isolated
         return True
 
-    async def switch_margin_mode(self, symbol: str, margin_mode: str, leverage: float) -> bool:
+    async def switch_margin_mode(self, symbol: str, margin_mode: MarginMode, leverage: float) -> bool:
         _ = leverage
-        mode = "ISOLATED" if margin_mode.lower() == "isolated" else "CROSSED"
+        mode = "ISOLATED" if margin_mode == MarginMode.isolated else "CROSSED"
         try:
             await self.post_request("/fapi/v1/marginType", body={"symbol": symbol, "marginType": mode})
             return True
@@ -203,8 +204,8 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         interval: str,
         candles: int,
         start_time: int = None,
+        max_limit: int = 1500,
     ) -> pd.DataFrame:
-        max_limit = 15
         return await super().get_history_data_frame(symbol, interval, candles, start_time, max_limit)
 
     async def new_order(
@@ -246,7 +247,7 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
             raise Exception(response)
 
     async def cancel_all_orders(self):
-        open_orders = await self.get_open_orders()
+        open_orders = await self.get_open_orders(coin='USDT')
         symbols = sorted({order.symbol for order in open_orders})
         result = []
         for symbol in symbols:
@@ -284,15 +285,18 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         self,
         symbol: str,
         order_id: str = None,
-        start_time: int | None = None,
-        end_time: int | None = None,
-        limit: int = 1000,
+        start_time: int = None,
+        end_time: int = None,
+        retries: int = 120
     ) -> list[OrderData] | OrderData:
         if order_id is not None:
             response = await self.get_request("/fapi/v1/order", params={"symbol": symbol, "orderId": order_id})
-            return [self._order_from_binance(response)]
+            order = self._order_from_binance(response)
+            if order.order_status.upper() == 'NEW':
+                raise exceptions.OrderNotFound
+            return order
 
-        params = {"symbol": symbol, "limit": min(limit, 1000)}
+        params = {"symbol": symbol, "limit": 500}
         if start_time is not None:
             params["startTime"] = start_time
         if end_time is not None:
@@ -342,16 +346,19 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
     async def get_open_orders(
         self,
         symbol: str | None = None,
-        side: str | None = None,
-        sort_by_time: bool = False,
+        coin: str | None = None,
+        retries: int = 70
     ) -> list[OrderData]:
+        if not any([symbol, coin]):
+            logger.critical('get_open_orders did not got symbol/coin')
+            raise AttributeError('get_open_orders did not got symbol/coin')
         params = {"symbol": symbol} if symbol else {}
         response = await self.get_request("/fapi/v1/openOrders", params=params)
         orders = [self._order_from_binance(item) for item in response]
-        if side:
-            orders = [o for o in orders if o.side.upper() == side.upper()]
-        if sort_by_time:
-            orders = sorted(orders, key=lambda x: x.updated_time)
+        # if side:
+        #     orders = [o for o in orders if o.side.upper() == side.upper()]
+        # if sort_by_time:
+        #     orders = sorted(orders, key=lambda x: x.updated_time)
         return orders
 
     def _position_from_binance(self, item: dict) -> PositionData:
@@ -388,8 +395,20 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         response = await self.get_request("/fapi/v2/positionRisk", params={"symbol": symbol})
         print('get_position response: %s', response)
         for item in response:
+            logger.debug('get_position item: %s', item)
             if item.get("symbol") == symbol and item.get("positionSide") == side.upper():
                 return self._position_from_binance(item)
+            elif item.get("symbol") == symbol and item.get("positionSide") == "BOTH":
+                logger.debug('get_position item BOTH: %s', item)
+                if not Decimal(item.get("positionAmt")) and empty_available:
+                    return self._position_from_binance(item)
+                else:
+                    item["positionSide"] = "BUY" if Decimal(item.get("positionAmt")) > 0 else "SELL"
+                    if item["positionSide"] == side.upper():
+                        return self._position_from_binance(item)
+                    else:
+                        continue
+            
         return None
 
     async def close_all_positions(self, symbol: str, position_data: PositionData):
