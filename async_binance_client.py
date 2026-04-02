@@ -142,9 +142,9 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         for _i in range(retries):
             response = await self.post_request(
                 "/fapi/v1/leverage",
-                body={"symbol": symbol, "leverage": leverage},
+                body={"symbol": symbol, "leverage": int(leverage)},
             )
-            if str(response.get("leverage")) == str(leverage):
+            if int(response.get("leverage")) == int(leverage):
                 return True
         return False
 
