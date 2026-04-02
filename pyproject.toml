@@ -13,6 +13,7 @@ dependencies = [
     "aiolimiter",
     "pandas",
     "pydantic>=2",
+    "websockets==16.0",
 ]
 
 [tool.setuptools]
