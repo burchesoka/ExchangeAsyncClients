@@ -332,6 +332,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             # Часто возникает при некорректных stop/tp.
             raise exceptions.StopLossImpossible
         if code in (-1111, -1100, -1102):
+            logger.error("OrderValidationError. url=%s status=%s response=%s", url, status_code, response)
             raise exceptions.OrderValidationError
         if code in (-2010,):
             raise exceptions.FailedOrder
