@@ -253,9 +253,9 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
 
         response = await self.post_request("/fapi/v1/order", body=params)
         logger.debug('new_order response: %s', response)
-        return response.get("orderId")
+        
         if response.get("orderId") is not None:
-            return response.get("orderId")
+            return str(response.get("orderId"))
         else:
             raise Exception(response)
 
@@ -268,7 +268,17 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         return result
 
     async def cancel_order(self, symbol: str, order_id: str):
-        return await self.delete_request("/fapi/v1/order", params={"symbol": symbol, "orderId": order_id})
+        try:
+            resp = await self.delete_request("/fapi/v1/order", params={"symbol": symbol, "orderId": order_id})
+            return True
+        except exceptions.OrderNotExist:
+            try:
+                await self._check_order(symbol, order_id)
+            except exceptions.OrderNotFound:
+                pass
+
+            logger.error('Order does not exist symbol: %s | id: %s', symbol, order_id)
+            return True
 
     def _order_from_binance(self, item: dict) -> OrderData:
         now_ms = int(time.time() * 1000)
@@ -318,7 +328,30 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         return [self._order_from_binance(item) for item in response]
 
     async def _check_order(self, symbol: str, order_id: str) -> OrderData:
-        raise NotImplementedError
+        logger.debug('check_order if it filled or not')
+
+        order_data = await self.get_order_history(
+            symbol=symbol,
+            order_id=order_id
+        )
+
+        if not order_data:
+            logger.critical('Order not found id: %s', order_id)
+            raise Exception
+        order_status = order_data.order_status
+
+        if order_status.upper() == 'FILLED':
+            logger.warning('Order was filled!!! id: %s', order_id)
+            raise exceptions.AlreadyFilledOrder
+        elif 'CANCELLED' in order_status.upper():
+            logger.info('Order was cancelled, id: %s | status: %s', order_id, order_status)
+            raise exceptions.CancelledOrder
+        elif 'partial' in order_status.lower():
+            logger.warning('Order was partially filled!!! id: %s %s', order_id, order_status)
+            raise exceptions.PartiallyFilledOrder
+        else:
+            logger.critical('Order was not filled, id: %s | status: %s', order_id, order_status)
+            raise Exception(f'WTF {order_status=}')
 
     async def get_executions(
         self,
@@ -329,20 +362,32 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
     ) -> list[ExecutionsData]:
         params = {"symbol": symbol, "limit": min(limit, 1000)}
         if start_time is not None:
+            start_time = int(start_time * 1000)
             params["startTime"] = start_time
         if end_time is not None:
+            end_time = int(end_time * 1000)
             params["endTime"] = end_time
         response = await self.get_request("/fapi/v1/userTrades", params=params)
+        logger.debug('get_executions response: %s', response)
         results = []
         for item in response:
+            position_side = item.get("positionSide", "BOTH")
+            side = item.get("side", "")
+            
+            if position_side == "LONG" and side == "BUY":
+                opening_position = True
+            elif position_side == "SHORT" and side == "SELL":
+                opening_position = True
+            else:
+                opening_position = False
             payload = {
                 "symbol": item.get("symbol", ""),
-                "opening_position": not bool(item.get("maker", False)),
+                "opening_position": opening_position,
                 "exec_qty": str(item.get("qty", "0")),
                 "order_id": str(item.get("orderId", "")),
                 "price": str(item.get("price", "0")),
-                "position_side": item.get("positionSide", "BOTH"),
-                "side": item.get("side", ""),
+                "position_side": position_side,
+                "side": side,
                 "time": item.get("time"),
             }
             execution = ExecutionsData.model_validate(payload)
@@ -352,9 +397,27 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         return results
 
     async def get_open_order(self, symbol: str, order_id: str, retries: int = 70) -> OrderData:
-        _ = retries
-        response = await self.get_request("/fapi/v1/openOrder", params={"symbol": symbol, "orderId": order_id})
-        return self._order_from_binance(response)
+        try:
+            response = await self.get_request("/fapi/v1/openOrder", params={"symbol": symbol, "orderId": order_id})
+            return self._order_from_binance(response)
+        except exceptions.OrderNotExist:
+            try:
+                order = await self.get_order_history(symbol, order_id, retries=retries)
+            except (exceptions.OrderNotFound, exceptions.OrderNotExist):
+                logger.critical('Order for %s not found: %s', symbol, order_id)
+                raise exceptions.OrderNotFound
+
+            if 'FILLED' in order.order_status.upper():
+                raise exceptions.AlreadyFilledOrder
+            elif 'CANCEL' in order.order_status.upper():
+                logger.debug('Cancelled order in history %s', order)
+                raise exceptions.CancelledOrder
+            elif 'NEW' in order.order_status.upper():
+                logger.critical('New order in history??? %s', order)
+                raise exceptions.CancelledOrder
+            else:
+                logger.critical('Unexpected order status: %s', order.order_status)
+                raise Exception(f'WTF {order.order_status=}')
 
     async def get_open_orders(
         self,
@@ -404,19 +467,22 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         return results
 
     async def get_position(self, symbol: str, side: "str", empty_available: bool = False) -> PositionData | None:
-        _ = empty_available
+        side_ = 'LONG' if side.upper() == 'BUY' else 'SHORT'
         response = await self.get_request("/fapi/v2/positionRisk", params={"symbol": symbol})
         print('get_position response: %s', response)
         for item in response:
             logger.debug('get_position item: %s', item)
-            if item.get("symbol") == symbol and item.get("positionSide") == side.upper():
-                return self._position_from_binance(item)
+            if item.get("symbol") == symbol and item.get("positionSide") == side_:
+                if not Decimal(item.get("positionAmt")) and empty_available:
+                    return self._position_from_binance(item)
+                else:
+                    return None
             elif item.get("symbol") == symbol and item.get("positionSide") == "BOTH":
                 logger.debug('get_position item BOTH: %s', item)
                 if not Decimal(item.get("positionAmt")) and empty_available:
                     return self._position_from_binance(item)
                 else:
-                    item["positionSide"] = "BUY" if Decimal(item.get("positionAmt")) > 0 else "SELL"
+                    item["positionSide"] = "LONG" if Decimal(item.get("positionAmt")) > 0 else "SHORT"
                     if item["positionSide"] == side.upper():
                         return self._position_from_binance(item)
                     else:

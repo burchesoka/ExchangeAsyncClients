@@ -728,6 +728,7 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
                 raise exceptions.CancelledOrder
             else:
                 logger.critical('Unexpected order status: %s', order.order_status)
+                raise Exception(f'WTF {order.order_status=}')
 
     async def get_open_orders(
             self,
