@@ -313,6 +313,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         # logger.debug("Binance API error. url=%s status=%s response=%s", url, status_code, response)
         code = response.get("code")
         msg = str(response.get("msg", ""))
+        logger.debug("%s %s %s", response, code, url)
         if code in (-1021,) or "timestamp for this request is outside of the recvWindow" in msg:
             await self.update_timestamp_shift()
             raise exceptions.InvalidNonce
