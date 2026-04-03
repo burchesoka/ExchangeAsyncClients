@@ -253,7 +253,7 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
 
         response = await self.post_request("/fapi/v1/order", body=params)
         logger.debug('new_order response: %s', response)
-        
+
         if response.get("orderId") is not None:
             return str(response.get("orderId"))
         else:
@@ -345,13 +345,13 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
             raise exceptions.AlreadyFilledOrder
         elif 'CANCELLED' in order_status.upper():
             logger.info('Order was cancelled, id: %s | status: %s', order_id, order_status)
-            raise exceptions.CancelledOrder
+            return
         elif 'partial' in order_status.lower():
             logger.warning('Order was partially filled!!! id: %s %s', order_id, order_status)
             raise exceptions.PartiallyFilledOrder
         else:
-            logger.critical('Order was not filled, id: %s | status: %s', order_id, order_status)
-            raise Exception(f'WTF {order_status=}')
+            logger.info('Order was not filled, id: %s | status: %s', order_id, order_status)
+            return
 
     async def get_executions(
         self,
