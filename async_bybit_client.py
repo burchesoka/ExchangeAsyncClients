@@ -799,7 +799,7 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             positions.append(PositionData.model_validate(position))
         return positions
 
-    async def get_position(self, symbol: str, side: 'str', empty_available: bool = False) -> PositionData | None:
+    async def get_position(self, symbol: str, side: str, empty_available: bool = False) -> PositionData | None:
         side = side.upper()
         retries = 100
         params = {

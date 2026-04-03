@@ -236,7 +236,7 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
     ) -> str:
         _ = take_price
         side_upper = side.upper()
-        position_side: str | None = None
+        position_side = None
         if reduce_only:
             position_side = 'SELL' if side_upper == "BUY" else "BUY"
         params = {
@@ -490,14 +490,14 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
             results.append(self._position_from_binance(item))
         return results
 
-    async def get_position(self, symbol: str, side: "str", empty_available: bool = False) -> PositionData | None:
+    async def get_position(self, symbol: str, side: str, empty_available: bool = False) -> PositionData | None:
         side_ = 'LONG' if side.upper() == 'BUY' else 'SHORT'
         response = await self.get_request("/fapi/v2/positionRisk", params={"symbol": symbol})
-        print('get_position response: %s', response)
+
         for item in response:
             logger.debug('get_position item: %s', item)
             if item.get("symbol") == symbol and item.get("positionSide") == side_:
-                if not Decimal(item.get("positionAmt")) and empty_available:
+                if Decimal(item.get("positionAmt")) or (not Decimal(item.get("positionAmt")) and empty_available):
                     return self._position_from_binance(item)
                 else:
                     return None
