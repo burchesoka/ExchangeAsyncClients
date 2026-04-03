@@ -227,29 +227,53 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         side: str,
         quantity: float | str,
         order_type: str,
-        position_mode: str,
+        position_mode: PositionMode,
         price: float | str | None = None,
         stop_price: float | str | None = None,
         take_price: float | str | None = None,
         reduce_only: bool = False,
-        position_side: str | None = None,
         time_in_force: str = "GTC",
     ) -> str:
         _ = take_price
+        side_upper = side.upper()
+        position_side: str | None = None
+        if reduce_only:
+            position_side = 'SELL' if side_upper == "BUY" else "BUY"
         params = {
             "symbol": symbol,
-            "side": side.upper(),
+            "side": side_upper,
             "quantity": str(quantity),
             "type": order_type.upper().replace(" ", "_"),
-            "reduceOnly": "true" if reduce_only else "false",
         }
+        if position_mode == PositionMode.hedge:
+            # Binance hedge mode требует LONG/SHORT в positionSide.
+            if position_side is None:
+                if reduce_only:
+                    raise ValueError("position_side is required for reduce_only orders in hedge mode")
+                resolved_position_side = "LONG" if side_upper == "BUY" else "SHORT"
+            else:
+                ps = position_side.upper()
+                if ps in ("BUY", "LONG"):
+                    resolved_position_side = "LONG"
+                elif ps in ("SELL", "SHORT"):
+                    resolved_position_side = "SHORT"
+                else:
+                    raise ValueError(f"Unsupported position_side for hedge mode: {position_side}")
+            params["positionSide"] = resolved_position_side
+            # reduceOnly в hedge mode Binance не принимает.
+        else:
+            params["reduceOnly"] = "true" if reduce_only else "false"
+            if position_side is not None:
+                ps = position_side.upper()
+                if ps in ("BOTH", "LONG", "SHORT"):
+                    params["positionSide"] = ps
+                elif ps in ("BUY", "SELL"):
+                    params["positionSide"] = "BOTH"
         if price is not None:
             params["price"] = str(price)
             params["timeInForce"] = time_in_force
         if stop_price is not None:
             params["stopPrice"] = str(stop_price)
-        if position_side is not None:
-            params["positionSide"] = position_side.upper()
 
         response = await self.post_request("/fapi/v1/order", body=params)
         logger.debug('new_order response: %s', response)
