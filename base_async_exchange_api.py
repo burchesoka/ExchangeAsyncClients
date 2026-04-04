@@ -118,7 +118,6 @@ class BaseAsyncExchangeAPI(ABC):
         ratelimit_sleep_seconds: int = 30,
     ):
         last_error = None
-
         limiter = self._limiter_for(endpoint)
         async with limiter:
             while retries:
