@@ -112,10 +112,10 @@ class BaseAsyncExchangeAPI(ABC):
         endpoint: str,
         params: dict | None = None,
         signed: bool = True,
-        retries: int = 10,
+        retries: int = 70,
         network_sleep_seconds: int = 3,
         timeout_sleep_seconds: int = 1,
-        ratelimit_sleep_seconds: int = 2,
+        ratelimit_sleep_seconds: int = 30,
     ):
         last_error = None
 
