@@ -1,6 +1,6 @@
 # Async Futures Clients
 
-Python modules for working with futures APIs of Bybit and Binance.
+Python modules for working with futures APIs of Bybit, BingX and Binance.
 
 ## Installation from GitHub
 
