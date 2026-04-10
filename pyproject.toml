@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
     "aiohttp",
     "aiolimiter",
+    "numpy<2.4.0",
     "pandas",
     "pydantic>=2",
     "websockets==16.0",
