@@ -46,11 +46,9 @@ class BingxAPI(BaseAsyncExchangeAPI):
             "/openApi/swap/v2/trade/allOpenOrders": "10",
             "/openApi/swap/v2/trade/leverage": "5",
             "/openApi/swap/v2/trade/marginType": "5",
-            "/openApi/swap/v2/trade/positionSide/dual": "5",
-            "/openApi/swap/v2/user/tradeHistory": "10",
+            "/openApi/swap/v1/positionSide/dual": "5",
             "/openApi/swap/v2/trade/allFillOrders": "10",
-            "/openApi/swap/v2/user/income": "5",
-            "/openApi/wallet/v1/capital/deposit/hisrec": "5",
+            "/openApi/api/v3/capital/deposit/hisrec": "10",
         }
         super().__init__(
             session=session,

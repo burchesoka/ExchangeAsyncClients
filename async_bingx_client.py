@@ -250,7 +250,7 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
         _ = symbol, coin
         params = {"dualSidePosition": "true" if mode == PositionMode.hedge else "false"}
         try:
-            response = await self.post_request("/openApi/swap/v2/trade/positionSide/dual", body=params)
+            response = await self.post_request("/openApi/swap/v1/positionSide/dual", body=params)
         except exceptions.NoChange:
             logger.info("Position mode is %s already", mode)
             return True
@@ -428,6 +428,8 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             "quantity": str(quantity),
             "reduceOnly": "true" if reduce_only else "false",
         }
+        if not reduce_only:
+            params.pop("reduceOnly")
         if price is not None and str(price) not in ("None", "none"):
             params["price"] = str(price)
         if position_mode == PositionMode.hedge:
@@ -840,52 +842,53 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
         logger.debug('close_all_positions: %s', close_positions_order_id)
 
     async def get_deposit_transactions(self, start_time: int = None, end_time: int = None):
-        params = {}
-
+        """История депозитов: GET /openApi/api/v3/capital/deposit/hisrec (пагинация offset/limit)."""
+        base: dict = {}
         if start_time:
-            params["startTime"] = str(start_time)
-            params["endTime"] = str(end_time)
+            base["startTime"] = str(start_time)
+            base["endTime"] = str(end_time)
 
-        response = None
-        retries = 5
-        cursor = None
-        transfers_list = []
-        while retries and not response:
-            if cursor:
-                params['cursor'] = cursor
+        transfers_list: list = []
+        offset = 0
+        page_limit = 500
 
-            try:
-                response = await self.get_request(
-                    "/openApi/wallet/v1/capital/deposit/hisrec",
-                    params=params,
-                )
+        while True:
+            params = {**base, "offset": str(offset), "limit": str(page_limit)}
+            retries = 5
+            response = None
+            while retries:
+                try:
+                    response = await self.get_request(
+                        "/openApi/api/v3/capital/deposit/hisrec",
+                        params=params,
+                    )
+                    break
+                except Exception as e:
+                    logger.critical("Unexpected error: %s | %s", type(e), e)
+                    logger.exception(e)
+                    retries -= 1
+                    if not retries:
+                        raise e
+                    await asyncio.sleep(0.5)
 
-            except Exception as e:
-                logger.critical("Unexpected error: %s | %s", type(e), e)
-                logger.exception(e)
-                retries -= 1
-                if not retries:
-                    raise e
-                await asyncio.sleep(0.5)
-                continue
+            if not response:
+                raise Exception("empty deposit response")
 
-            if response:
-                logger.debug("response: %s", response)
+            logger.debug("response: %s", response)
+            res = response.get("result") or {}
+            rows = res.get("rows") or res.get("data") or res.get("list") or []
+            if isinstance(rows, dict):
+                rows = rows.get("rows") or []
+            if not rows:
+                break
+            for transfer in rows:
+                transfers_list.append(transfer)
+            if len(rows) < page_limit:
+                break
+            offset += len(rows)
 
-                res = response.get("result") or {}
-                rows = res.get("rows") or res.get("data") or res.get("list") or []
-                if isinstance(rows, dict):
-                    rows = rows.get("rows") or []
-                for transfer in rows:
-                    transfers_list.append(transfer)
-                next_cur = res.get("nextPageCursor") if isinstance(res, dict) else None
-                if next_cur:
-                    cursor = next_cur
-                    response = None
-                    continue
-                logger.debug("trafers_list: %s", transfers_list)
-                return transfers_list
-            raise Exception("empty deposit response")
+        logger.debug("trafers_list: %s", transfers_list)
+        return transfers_list
 
     async def get_closed_pnl_history(
             self,
