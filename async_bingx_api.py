@@ -1,21 +1,21 @@
 from aiolimiter import AsyncLimiter
 import aiohttp
-import logging
-import json
-import time
-import hmac
 import hashlib
+import hmac
+import logging
+import time
+from urllib.parse import urlencode
 
 import exceptions
 from base_async_exchange_api import BaseAsyncExchangeAPI
-
-from urllib.parse import urlencode
 
 
 logger = logging.getLogger(__name__)
 
 
 class BingxAPI(BaseAsyncExchangeAPI):
+    """REST BingX (open-api.bingx.com): ответы вида {\"code\":0,\"msg\":\"\",\"data\":...}."""
+
     def __init__(
         self,
         session: aiohttp.ClientSession,
@@ -23,38 +23,34 @@ class BingxAPI(BaseAsyncExchangeAPI):
         api_key: str,
         broker_id: str | None = None,
     ):
-        self.recv_window = "15000"
+        self.recv_window = "5000"
         self.recv_window_shift = 0
         self.broker_id = broker_id
-        self.base_url = "https://api.bybit.com"
+        self.base_url = "https://open-api.bingx.com"
         limiters = {
-            "10": AsyncLimiter(10, 1),  # 10 запросов в 1 секунду
+            "10": AsyncLimiter(10, 1),
             "20": AsyncLimiter(20, 1),
             "50": AsyncLimiter(50, 1),
             "5": AsyncLimiter(5, 1),
         }
         limiters_dict = {
-            "/v5/position/closed-pnl": "50",
-            "/v5/position/list": "50",
-            "/v5/position/set-leverage": "10",
-            "/v5/position/switch-mode": "10",
-            "/v5/position/switch-isolated": "10",
-            "/v5/execution/list": "50",
-            "/v5/order/history": "50",
-            "/v5/order/realtime": "50",
-            "/v5/order/create": "20",
-            "/v5/order/cancel": "20",
-            "/v5/order/cancel-all": "20",
-            "/v5/asset/transfer/inter-transfer": "50",
-            "/v5/asset/coin/query-info": "5",
-            "/v5/asset/deposit/query-internal-record": "5",
-            "/v5/user/query-api": "10",
-            "/v5/market/kline": "5",
-            "/v5/market/instruments-info": "5",
-            "/v5/market/time": "5",
-            "/v5/account/info": "50",
-            "/v5/account/set-margin-mode": "5",
-            "/v5/account/wallet-balance": "50",
+            "/openApi/swap/v2/server/time": "10",
+            "/openApi/swap/v2/quote/contracts": "10",
+            "/openApi/swap/v2/quote/klines": "10",
+            "/openApi/swap/v2/user/balance": "5",
+            "/openApi/swap/v2/user/positions": "5",
+            "/openApi/swap/v2/user/income": "5",
+            "/openApi/swap/v2/trade/order": "10",
+            "/openApi/swap/v2/trade/openOrders": "10",
+            "/openApi/swap/v2/trade/allOrders": "10",
+            "/openApi/swap/v2/trade/allOpenOrders": "10",
+            "/openApi/swap/v2/trade/leverage": "5",
+            "/openApi/swap/v2/trade/marginType": "5",
+            "/openApi/swap/v2/trade/positionSide/dual": "5",
+            "/openApi/swap/v2/user/tradeHistory": "10",
+            "/openApi/swap/v2/trade/myTrades": "10",
+            "/openApi/swap/v2/user/income": "5",
+            "/openApi/wallet/v1/capital/deposit/hisrec": "5",
         }
         super().__init__(
             session=session,
@@ -64,69 +60,64 @@ class BingxAPI(BaseAsyncExchangeAPI):
             limiters_dict=limiters_dict,
         )
 
-    def sign_bingx(self, params: dict) -> str:
-        """Подпись для BingxAPI (совместима с текущей схемой Bybit v5)."""
-        param_str = urlencode(sorted(params.items()))
+    def _stringify_param(self, value) -> str:
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        return str(value)
+
+    def _sign_payload(self, params: dict) -> str:
+        pairs = sorted((k, self._stringify_param(v)) for k, v in params.items() if k != "signature")
+        query = "&".join(f"{k}={v}" for k, v in pairs)
         return hmac.new(
             self.api_secret.encode("utf-8"),
-            param_str.encode("utf-8"),
+            query.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()
 
-    def sign_post(self, json_body: json) -> dict:
-        """Подпись для POST: timestamp + api_key + recv_window + jsonBodyString."""
-        timestamp = str(int(time.time() * 1000) + self.recv_window_shift)
-        sign_str = timestamp + self.api_key + self.recv_window + json_body
-        x_bapi_sign = hmac.new(
-            self.api_secret.encode("utf-8"),
-            sign_str.encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
-        headers = {
-            "X-BAPI-API-KEY": self.api_key,
-            "X-BAPI-SIGN": x_bapi_sign,
-            "X-BAPI-TIMESTAMP": timestamp,
-            "X-BAPI-RECV-WINDOW": self.recv_window,
-            "X-BAPI-SIGN-TYPE": "2",
-            "Content-Type": "application/json",
-        }
-        if self.broker_id:
-            headers["X-Referer"] = self.broker_id
-        return headers
+    def _merge_signed_params(self, params: dict | None) -> dict:
+        merged = dict(params or {})
+        merged["timestamp"] = int(time.time() * 1000) + self.recv_window_shift
+        merged["recvWindow"] = int(self.recv_window)
+        return merged
 
-    def sign_get(self, params: dict | None) -> dict:
-        """Подпись для GET: timestamp + api_key + recv_window + queryString."""
-        timestamp = str(int(time.time() * 1000) + self.recv_window_shift)
-        params = params or {}
-        query_string = urlencode(sorted(params.items())) if params else ""
-        sign_str = timestamp + self.api_key + str(self.recv_window) + query_string
-        sign = hmac.new(
-            self.api_secret.encode("utf-8"),
-            sign_str.encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
-        headers = {
-            "X-BAPI-API-KEY": self.api_key,
-            "X-BAPI-SIGN": sign,
-            "X-BAPI-TIMESTAMP": timestamp,
-            "X-BAPI-RECV-WINDOW": self.recv_window,
-            "X-BAPI-SIGN-TYPE": "2",
+    def _normalize_bingx_response(self, resp: dict | list | None):
+        if not isinstance(resp, dict) or "code" not in resp:
+            return resp
+        code = resp.get("code")
+        ok = code == 0 or code == "0"
+        data = resp.get("data")
+        if isinstance(data, list):
+            result = {"list": data, "nextPageCursor": None}
+        elif isinstance(data, dict):
+            result = data
+        else:
+            result = data
+        ret_code = 0 if ok else (int(code) if str(code).lstrip("-").isdigit() else -1)
+        return {
+            "retCode": ret_code,
+            "retMsg": "OK" if ok else (resp.get("msg") or resp.get("message") or ""),
+            "result": result,
         }
-        if self.broker_id:
-            headers["X-Referer"] = self.broker_id
-        return headers
 
     async def update_recv_window_shift(self):
         time_now = int(time.time() * 1000)
-        server_time = await self.get_request(endpoint="/v5/market/time")
-        server_time = server_time["time"]
+        raw = await self.public_get_request("/openApi/swap/v2/server/time")
+        if not isinstance(raw, dict):
+            return
+        data = raw.get("result") or raw.get("data") or raw
+        if not isinstance(data, dict):
+            return
+        server_time = data.get("serverTime") or data.get("timestamp") or time_now
+        try:
+            server_time = int(server_time)
+        except (TypeError, ValueError):
+            server_time = time_now
         difference = time_now - server_time
-        logger.debug("difference %s", difference)
-        self.recv_window_shift = difference - 2500
+        self.recv_window_shift = difference - 500
         logger.info("recv_window_shift updated: %s", self.recv_window_shift)
 
     async def get_request(self, endpoint: str, params: dict | None = None, retries: int = 70):
-        return await self._request(
+        data = await self._request(
             method="GET",
             endpoint=endpoint,
             params=params,
@@ -136,9 +127,10 @@ class BingxAPI(BaseAsyncExchangeAPI):
             timeout_sleep_seconds=1,
             ratelimit_sleep_seconds=30,
         )
+        return self._normalize_bingx_response(data)
 
     async def post_request(self, endpoint, body: dict, retries: int = 70):
-        return await self._request(
+        data = await self._request(
             method="POST",
             endpoint=endpoint,
             params=body,
@@ -148,6 +140,33 @@ class BingxAPI(BaseAsyncExchangeAPI):
             timeout_sleep_seconds=1,
             ratelimit_sleep_seconds=30,
         )
+        return self._normalize_bingx_response(data)
+
+    async def delete_request(self, endpoint: str, params: dict | None = None, retries: int = 70):
+        data = await self._request(
+            method="DELETE",
+            endpoint=endpoint,
+            params=params,
+            signed=True,
+            retries=retries,
+            network_sleep_seconds=5,
+            timeout_sleep_seconds=1,
+            ratelimit_sleep_seconds=30,
+        )
+        return self._normalize_bingx_response(data)
+
+    async def public_get_request(self, endpoint: str, params: dict | None = None, retries: int = 70):
+        data = await self._request(
+            method="GET",
+            endpoint=endpoint,
+            params=params,
+            signed=False,
+            retries=retries,
+            network_sleep_seconds=5,
+            timeout_sleep_seconds=1,
+            ratelimit_sleep_seconds=30,
+        )
+        return self._normalize_bingx_response(data)
 
     def _build_request_data(
         self,
@@ -156,53 +175,52 @@ class BingxAPI(BaseAsyncExchangeAPI):
         params: dict | None,
         signed: bool,
     ) -> tuple[str, dict | None, dict | None, str | None]:
-        if method == "GET":
+        if not signed:
             query_params = params or {}
-            headers = self.sign_get(query_params) if signed else None
             query_string = urlencode(sorted(query_params.items())) if query_params else ""
-            url = f"{self.base_url}{endpoint}?{query_string}" if query_string else f"{self.base_url}{endpoint}"
-            return url, None, headers, None
+            url = f"{self.base_url}{endpoint}"
+            if query_string:
+                url = f"{url}?{query_string}"
+            return url, None, {}, None
 
-        json_body = json.dumps(params or {}, separators=(",", ":"))
-        headers = self.sign_post(json_body) if signed else {"Content-Type": "application/json"}
-        url = f"{self.base_url}{endpoint}"
-        return url, None, headers, json_body
+        merged = self._merge_signed_params(params)
+        merged["signature"] = self._sign_payload(merged)
+        query_string = urlencode(sorted((k, self._stringify_param(v)) for k, v in merged.items()))
+        url = f"{self.base_url}{endpoint}?{query_string}"
+        headers = {"X-BX-APIKEY": self.api_key}
+        if self.broker_id:
+            headers["X-SOURCE-KEY"] = self.broker_id
+        return url, None, headers, None
 
     def _extract_limit_from_headers(self, headers):
-        return dict(headers).get("X-Bapi-Limit")
+        return dict(headers).get("X-RateLimit-Remaining")
 
     def _is_success_response(self, response: dict, status_code: int) -> bool:
-        return response.get("retCode") == 0
+        if status_code >= 400:
+            return False
+        if not isinstance(response, dict):
+            return True
+        if "code" not in response:
+            return True
+        code = response.get("code")
+        return code == 0 or code == "0"
 
     async def _handle_error_response(self, response: dict, status_code: int, url: str):
-        ret_code = response.get("retCode")
-        ret_msg = response.get("retMsg")
-        if ret_code == 10002 or "please check your server timestamp or recv_window param" in ret_msg:
+        msg = str(response.get("msg") or response.get("message") or "")
+        code = response.get("code")
+        if code in (100001, "100001") or "signature" in msg.lower():
             await self.update_recv_window_shift()
             raise exceptions.InvalidNonce
-        elif ret_code == 110043 or "leverage not modified" in response.get("retMsg"):
-            raise exceptions.LeverageNotModified
-        elif ret_code == 110025 or "Position mode is not modified" in ret_msg:
-            raise exceptions.NoChange
-        elif ret_code == 110007 or "CheckMarginRatio fail" in ret_msg:
-            logger.warning("Insufficient available balance. Url: %s", url)
+        if code in (100202, "100202") or "balance" in msg.lower():
             raise exceptions.MarginInsufficient
-        elif ret_code == 110094 or "Order does not meet minimum order value" in ret_msg:
-            logger.critical("Minimum limit. Url: %s \n%s", url, response)
-            raise exceptions.MinimumLimitExceeded
-        elif ret_code == 110017 or "cannot fix reduce-only order qty" in ret_msg or "orderQty will be truncated to zero" in ret_msg:
-            logger.info("Reduce-only rule not satisfied. Url: %s \n%s", url, response)
-            raise exceptions.ReduceImpossible
-        elif ret_code == 110021:
-            logger.critical("out of open interest limit. Url: %s \n%s", url, response)
-            raise exceptions.OutOfOpenInterest
-        elif ret_code == 110001 or "order not exist" in ret_msg:
-            raise exceptions.OrderNotExist
-        elif ret_code == 10006 or "Too many visits. Exceeded the API Rate Limit" in ret_msg:
+        if code in (100400, "100400"):
+            raise exceptions.OrderValidationError
+        if code in (100503, "100503") or "too many" in msg.lower() or "rate" in msg.lower():
             raise exceptions.RateLimitExceeded
-        else:
-            logger.critical("Unknown error %s\n%s", url, response)
-            raise exceptions.RequestError
+        if "not exist" in msg.lower() or "does not exist" in msg.lower():
+            raise exceptions.OrderNotExist
+        logger.critical("BingX API error url=%s response=%s", url, response)
+        raise exceptions.RequestError
 
 
 if __name__ == "__main__":

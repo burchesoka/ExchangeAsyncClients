@@ -23,7 +23,7 @@ class BybitAPI(BaseAsyncExchangeAPI):
         api_key: str,
         broker_id: str | None = None,
     ):
-        self.recv_window = "15000"
+        self.recv_window = "5000"
         self.recv_window_shift = 0
         self.broker_id = broker_id
         self.base_url = "https://api.bybit.com"

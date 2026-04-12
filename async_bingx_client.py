@@ -23,15 +23,94 @@ from base import (
     WalletData,
     ExecutionsData,
     PositionMode,
-    INTERVAL_FOR_BYBIT,
-    INTERVAL_FROM_BYBIT_TO_MY,
-    ORDER_SPECS,
     Exchange,
 )
 from async_bingx_api import BingxAPI
 
 
 logger = logging.getLogger(__name__)
+
+INTERVAL_FOR_BINGX = {
+    "1m": "1m",
+    "3m": "3m",
+    "5m": "5m",
+    "15m": "15m",
+    "30m": "30m",
+    "1h": "1h",
+    "2h": "2h",
+    "4h": "4h",
+    "6h": "6h",
+    "12h": "12h",
+    "1d": "1d",
+    "1w": "1w",
+    "1M": "1M",
+}
+
+
+def _to_bingx_symbol(symbol: str) -> str:
+    s = symbol.strip().upper().replace("-", "")
+    if "-" in symbol:
+        return symbol.strip().upper()
+    if s.endswith("USDT"):
+        return f"{s[:-4]}-USDT"
+    return symbol.strip().upper()
+
+
+def _bingx_position_to_model(pos: dict) -> PositionData:
+    ps = (pos.get("positionSide") or "LONG").upper()
+    side = "BUY" if ps == "LONG" else "SELL"
+    ts = pos.get("updateTime") or int(time.time() * 1000)
+    try:
+        ts_int = int(ts)
+    except (TypeError, ValueError):
+        ts_int = int(time.time() * 1000)
+    ct = datetime.datetime.utcfromtimestamp(ts_int / 1000.0)
+    row = {
+        "symbol": (pos.get("symbol") or "").replace("-", ""),
+        "side": side,
+        "positionAmt": pos.get("positionAmt") or "0",
+        "avgPrice": pos.get("avgPrice") or pos.get("entryPrice") or "0",
+        "stopLoss": pos.get("stopLoss") or "0",
+        "takeProfit": pos.get("takeProfit") or "0",
+        "liquidationPrice": pos.get("liquidationPrice") or "0",
+        "margin": pos.get("isolatedMargin") or pos.get("margin") or "0",
+        "leverage": str(pos.get("leverage", "1")),
+        "createdTime": ct,
+        "updateTime": ts_int,
+        "unrealizedProfit": pos.get("unrealizedProfit") or pos.get("unrealisedPnl") or "0",
+    }
+    pd = PositionData.model_validate(row)
+    pd.customize()
+    return pd
+
+
+def _bingx_order_to_model(order: dict) -> OrderData:
+    """Поля ответа BingX swap -> OrderData."""
+    orig = order.get("origQty") or order.get("qty") or "0"
+    exe = order.get("executedQty") or order.get("cumExecQty") or "0"
+    try:
+        leaves = str(Decimal(str(orig)) - Decimal(str(exe)))
+    except Exception:
+        leaves = orig
+    row = {
+        "orderId": str(order.get("orderId", "")),
+        "symbol": order.get("symbol", ""),
+        "orderType": order.get("type") or order.get("orderType") or "MARKET",
+        "qty": str(orig),
+        "leavesQty": leaves,
+        "cumExecQty": str(exe),
+        "side": order.get("side", ""),
+        "price": str(order.get("price") or "0"),
+        "avgPrice": str(order.get("avgPrice") or order.get("avgPx") or "0"),
+        "takeProfit": str(order.get("takeProfit") or order.get("profit") or "0"),
+        "stopLoss": str(order.get("stopLoss") or order.get("stopPrice") or "0"),
+        "orderStatus": order.get("status") or order.get("orderStatus") or "NEW",
+        "createdTime": str(order.get("time") or order.get("createTime") or "0"),
+        "updatedTime": str(order.get("updateTime") or order.get("time") or "0"),
+    }
+    od = OrderData.model_validate(row)
+    od.customize()
+    return od
 
 
 class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
@@ -54,53 +133,57 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
         BingxAPI.__init__(
             self,
             session=session,
-            api_key=api_key,
             api_secret=api_secret,
+            api_key=api_key,
             broker_id=broker_id,
         )
 
     async def get_all_instruments_info(self):
-        res = []
-        params = {'category': self.category}
-        while True:
-            result = await self.get_request("/v5/market/instruments-info", params=params)
-            res += (result['result']['list'])
-
-            if result['result'].get('nextPageCursor'):
-                params['cursor'] = result['result']['nextPageCursor']
-            else:
-                break
+        result = await self.public_get_request("/openApi/swap/v2/quote/contracts")
+        if result.get("retMsg") != "OK":
+            logger.critical("quote/contracts error %s", result)
+            raise Exception(result)
+        raw = result.get("result") or {}
+        if isinstance(raw, dict) and "contracts" in raw:
+            res = raw["contracts"]
+        elif isinstance(raw, dict) and "list" in raw:
+            res = raw["list"]
+        elif isinstance(raw, list):
+            res = raw
+        else:
+            res = []
 
         instruments = {}
         for i in res:
-            instruments[i['symbol']] = InstrumentInfo(
-                symbol=i['symbol'],
-                min_order_qty=i['lotSizeFilter']['minOrderQty'],
-                tick_size=i['priceFilter']['tickSize']
+            sym = i.get("symbol") or i.get("currency")
+            if not sym:
+                continue
+            min_q = i.get("minQty") or i.get("tradeMinQty") or i.get("size") or "0"
+            tick = i.get("tickSize") or i.get("priceTick") or "0"
+            instruments[sym.replace("-", "")] = InstrumentInfo(
+                symbol=sym.replace("-", ""),
+                min_order_qty=min_q,
+                tick_size=tick,
             )
         return instruments
 
     async def is_master_trader_account(self):
-        acc_info = await self.get_account_info()
-
-        if acc_info.get('isMasterTrader'):
-            return True
-        else:
-            return False
+        return False
 
     async def get_api_key_info(self):
-        api_info = await self.get_request("/v5/user/query-api")
-
-        if api_info.get('result'):
-            logger.debug(api_info)
-            return api_info.get('result')
-        else:
-            logger.critical('get_api_key_info error %s', api_info)
-            raise Exception(api_info)
+        bal = await self.get_request("/openApi/swap/v2/user/balance", params={})
+        if bal.get("retMsg") == "OK" and bal.get("result") is not None:
+            return bal.get("result")
+        logger.critical("get_api_key_info error %s", bal)
+        raise Exception(bal)
 
     async def get_user_id(self):
-        api_info = await self.get_api_key_info()
-        return api_info['userID']
+        info = await self.get_api_key_info()
+        if isinstance(info, dict):
+            b = info.get("balance") if "balance" in info else info
+            if isinstance(b, dict):
+                return str(b.get("userId") or b.get("uid") or "")
+        return ""
 
     async def get_wallet_data(
             self,
@@ -108,80 +191,55 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             retries: int = 25,
     ) -> WalletData:
         while True:
-            params = {"accountType": "UNIFIED"}
-
-            response = await self.get_request('/v5/account/wallet-balance', params=params)
-
-            if response.get('info'):
-                response = response.get('info')
-
-            if response.get('retMsg') == 'OK':
+            response = await self.get_request("/openApi/swap/v2/user/balance", params={})
+            if response.get("retMsg") == "OK":
                 try:
-                    wallet_balance_data_in_usdt = None
-                    wallet_balance_data = response.get('result').get('list')[0]
-                    for coin_data in wallet_balance_data['coin']:
-                        if coin_data.get('coin').upper() == 'USDT':
-                            wallet_balance_data_in_usdt = coin_data
-
-                    if wallet_balance_data_in_usdt is None:
-                        if logs_enabled:
-                            logger.warning(
-                                'wallet_balance_data_in_usdt is NONE | response: %s | retries: %s',
-                                response,
-                                retries
-                            )
-                        if retries > 0:
-                            retries -= 1
-                            await asyncio.sleep(1)
-
-                            continue
-                        else:
-                            raise exceptions.EmptyWallet(response)
-
-                    wallet_balance_data |= wallet_balance_data_in_usdt
-
-                    if not wallet_balance_data['totalAvailableBalance']:
-                        wallet_balance_data['totalAvailableBalance'] = '0'
-                    # if not wallet_balance_data_in_usdt['availableToWithdraw']:
-                    #     wallet_balance_data_in_usdt['availableToWithdraw'] = Decimal(wallet_balance_data_in_usdt['walletBalance']) - \
-                    #                                                          Decimal(wallet_balance_data_in_usdt['totalPositionIM']) + \
-                    #                                                          Decimal(wallet_balance_data_in_usdt['unrealisedPnl'])
-
-                    return WalletData.model_validate(wallet_balance_data)
+                    result = response.get("result") or {}
+                    if isinstance(result, dict) and "balance" in result:
+                        b = result["balance"]
+                    elif isinstance(result, list) and result:
+                        b = result[0]
+                    else:
+                        b = result
+                    if not isinstance(b, dict):
+                        raise ValueError("unexpected balance payload")
+                    row = {
+                        "walletBalance": b.get("balance") or b.get("walletBalance") or "0",
+                        "totalAvailableBalance": b.get("availableMargin")
+                        or b.get("availableBalance")
+                        or b.get("available")
+                        or "0",
+                        "equity": b.get("equity") or b.get("totalEquity") or b.get("balance") or "0",
+                    }
+                    return WalletData.model_validate(row)
                 except Exception as e:
                     if logs_enabled:
-                        logger.critical("Wrong API settings? Or zero balance? Can't get wallet data | Error: %s | %s", type(e), e)
+                        logger.critical(
+                            "Can't get BingX wallet data | Error: %s | %s | %s",
+                            type(e),
+                            e,
+                            response,
+                        )
+                    if retries > 0:
+                        retries -= 1
+                        await asyncio.sleep(1)
+                        continue
                     raise e
+            if retries > 0:
+                retries -= 1
+                await asyncio.sleep(1)
+                continue
+            raise exceptions.EmptyWallet(response)
 
     async def get_account_info(self):
-        acc_info = await self.get_request("/v5/account/info")
-        if acc_info is not None and acc_info.get('result'):
-            return acc_info.get('result')
-        else:
-            raise Exception(f'Unexpected response {acc_info=}')
+        return await self.get_request("/openApi/swap/v2/user/balance", params={})
 
     async def transfer(self, from_account: str, to_account: str, amount: float):
         """
-        from_account, to_account: CONTRACT, FUND or UNIFIED
+        Переводы между кошельками BingX — отдельный wallet API; в swap-клиенте не реализовано.
         """
-        logger.info('transfer %s USDT from %s to %s', amount, from_account, to_account)
-
-        transfer_id = str(uuid.uuid4())
-        params = {
-            "transferId": transfer_id,
-            "coin": "USDT",
-            "amount": str(amount),
-            "fromAccountType": from_account,
-            "toAccountType": to_account
-        }
-        response = await self.post_request("/v5/asset/transfer/inter-transfer", body=params)
-
-        if response.get('retCode') == 0:
-            logger.info('Transfer successful %s', response)
-            return response
-        else:
-            logger.warning('Transfer unable %s', response)
-            raise exceptions.TransferUnable
+        logger.info("transfer %s USDT from %s to %s (not implemented for BingX)", amount, from_account, to_account)
+        raise exceptions.TransferUnable("BingX transfer: use wallet/openApi endpoints separately")
 
     async def switch_position_mode(
         self,
@@ -189,36 +247,19 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
         symbol: str = None,
         coin: str = None
     ):
-        if not any([coin, symbol]):
-            logger.critical('coin and symbol cannot be both empty')
-            raise ValueError
-
-        params = {
-            "category": self.category,
-            "mode": "0" if mode == PositionMode.one_way else "3"
-        }
-
-        if symbol:
-            params['symbol'] = symbol
-        else:
-            params['coin'] = coin
-
+        _ = symbol, coin
+        params = {"dualSidePosition": "true" if mode == PositionMode.hedge else "false"}
         try:
-            response = await self.post_request("/v5/position/switch-mode", body=params)
+            response = await self.post_request("/openApi/swap/v2/trade/positionSide/dual", body=params)
         except exceptions.NoChange:
-            logger.info('Position mode is %s already', mode)
+            logger.info("Position mode is %s already", mode)
             return True
 
-        if response.get('retCode') == 0:
-            logger.info('Position mode %s switched successful', mode)
+        if response.get("retMsg") == "OK" or response.get("retCode") == 0:
+            logger.info("Position mode %s switched successful", mode)
             return True
-
-        elif response.get('retCode') == 110025 or 'Position mode is not modified' in response.get('retMsg'):
-            logger.info('Position mode is %s already', mode)
-            return True
-        else:
-            logger.error('response: %s', response)
-            raise Exception(f'Unexpected error. switch_position_mode {response=}')
+        logger.error("response: %s", response)
+        raise Exception(f"Unexpected error. switch_position_mode {response=}")
 
     async def set_leverage(
             self,
@@ -227,89 +268,55 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             position_mode: PositionMode = PositionMode.hedge,
             retries=20
     ) -> bool:
+        _ = position_mode, retries
         params = {
-            'category': self.category,
-            'symbol': symbol,
-            'buyLeverage': str(leverage),
-            'sellLeverage': str(leverage),
+            "symbol": _to_bingx_symbol(symbol),
+            "leverage": leverage,
         }
         retries_local = 5
         while retries_local:
             try:
-                response = await self.post_request("/v5/position/set-leverage", body=params)
+                response = await self.post_request("/openApi/swap/v2/trade/leverage", body=params)
             except (exceptions.LeverageNotModified, exceptions.NoChange):
-                logger.info('Leverage is %s already', leverage)
+                logger.info("Leverage is %s already", leverage)
                 return True
 
-            ret_code = response.get('retCode')
-            if ret_code == 0:
-                logger.info('Set leverage %s for %s successful | resp: %s', leverage, symbol, response)
+            if response.get("retMsg") == "OK" or response.get("retCode") == 0:
+                logger.info("Set leverage %s for %s successful | resp: %s", leverage, symbol, response)
                 return True
-            else:
-                logger.error('response: %s', response)
-                return False
-                retries_local -= 1
-                await asyncio.sleep(1)
+            logger.error("response: %s", response)
+            retries_local -= 1
+            await asyncio.sleep(1)
+        return False
 
     async def set_margin_mode_to_account(self, isolated: bool = False):
-        params = {
-            "setMarginMode": "REGULAR_MARGIN",
-        }
-        if isolated:
-            params['setMarginMode'] = 'ISOLATED_MARGIN'
-
-        resp = await self.post_request("/v5/account/set-margin-mode", body=params)
-        logger.info(resp)
+        logger.info("set_margin_mode_to_account BingX: no global account endpoint, skipped | isolated=%s", isolated)
 
     async def switch_margin_mode(self, symbol: str, margin_mode: MarginMode, leverage: float) -> bool:
         """
-        Unified account is forbidden to switch margin mode
+        Режим маржи по символу (CROSSED / ISOLATED).
         """
-        return True
-
         params = {
-            "category": "linear",
-            "symbol": symbol,
-            "tradeMode": "0" if margin_mode == MarginMode.cross else "1",
-            "buyLeverage": str(leverage),
-            "sellLeverage": str(leverage),
+            "symbol": _to_bingx_symbol(symbol),
+            "marginType": "ISOLATED" if margin_mode == MarginMode.isolated else "CROSSED",
         }
-
-        response = await self.post_request("/v5/position/switch-isolated", body=params)
-
-        if response.get('retMsg') == 'OK':
-            logger.info('Set leverage %s and mode %s successful', leverage, margin_mode)
+        _ = leverage
+        try:
+            response = await self.post_request("/openApi/swap/v2/trade/marginType", body=params)
+        except exceptions.NoChange:
             return True
-        else:
-            logger.error('response error: %s', response)
-            return False
+        return response.get("retMsg") == "OK" or response.get("retCode") == 0
 
 
     async def get_instrument_info(self, symbol: str) -> InstrumentInfo:
-        logger.debug('get_instrument_info: gets exchange info for symbol: %s', symbol)
-
-        params = {
-            "category": self.category,
-            "symbol": symbol
-        }
-        instrument_info = await self.get_request("/v5/market/instruments-info", params=params)
-
-        if instrument_info.get('retMsg') != 'OK':
-            logger.critical('Unexpected error. instrument_info: %s', instrument_info)
-            raise Exception
-
-        price_info = instrument_info.get('result').get('list')[0]['priceFilter']
-        symbol = instrument_info.get('result').get('list')[0]['symbol']
-        lot_size_info = instrument_info.get('result').get('list')[0]['lotSizeFilter']
-        return InstrumentInfo(
-            symbol=symbol,
-            min_order_qty=lot_size_info['minOrderQty'],
-            tick_size=price_info['tickSize'],
-            contract_value='1',
-        )
+        logger.debug("get_instrument_info: %s", symbol)
+        all_inst = await self.get_all_instruments_info()
+        key = symbol.replace("-", "").upper()
+        if key not in all_inst:
+            raise exceptions.NotFound(symbol)
+        return all_inst[key]
 
     async def get_klines_history(self, symbol: str, interval: str, candles: int) -> list:
-        raise NotImplementedError
         time_now = time.time()
         start_time = int((time_now - INTERVAL_IN_SEC[interval] * candles) * 1000)
         end_time = int(time_now * 1000)
@@ -363,18 +370,21 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
 
     async def get_klines(self, symbol: str, interval: str, limit: int, start: int, end: int) -> list:
         params = {
-            "category": self.category,
-            "symbol": symbol,
-            "interval": INTERVAL_FOR_BYBIT[interval],
+            "symbol": _to_bingx_symbol(symbol),
+            "interval": INTERVAL_FOR_BINGX.get(interval, interval),
             "limit": limit,
-            "start": start,
-            "end": end,
         }
-        if end is None:
-            params.pop('end')
-        klines = await self.get_request("/v5/market/kline", params=params)
-        klines_list = klines.get('result').get('list')
-        return klines_list
+        if start is not None:
+            params["startTime"] = start
+        if end is not None:
+            params["endTime"] = end
+        klines = await self.public_get_request("/openApi/swap/v2/quote/klines", params=params)
+        raw = klines.get("result")
+        if isinstance(raw, dict) and "list" in raw:
+            return raw.get("list") or []
+        if isinstance(raw, list):
+            return raw
+        return []
 
     async def get_history_data_frame(
             self,
@@ -411,69 +421,70 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             position_mode
         )
 
-        if reduce_only:
-            position_idx = 2 if side == 'BUY' else 1
-        else:
-            position_idx = 1 if side == 'BUY' else 2
-
         params = {
-            "category": self.category,
-            "symbol": symbol,
-            "orderType": ORDER_SPECS[order_type],
-            "side": ORDER_SPECS[side],
-            "qty": str(quantity),
-            "price": str(price),
-            "reduceOnly": reduce_only,
+            "symbol": _to_bingx_symbol(symbol),
+            "side": side.upper(),
+            "type": order_type.upper().replace(" ", "_"),
+            "quantity": str(quantity),
+            "reduceOnly": "true" if reduce_only else "false",
         }
+        if price is not None and str(price) not in ("None", "none"):
+            params["price"] = str(price)
         if position_mode == PositionMode.hedge:
-            params["positionIdx"] = position_idx,
+            params["positionSide"] = "LONG" if side.upper() == "BUY" else "SHORT"
 
         match order_type:
-            case 'STOP' | 'STOP_MARKET':
-                params['triggerPrice'] = str(stop_price)
-                params['triggerDirection'] = 1 if side == 'BUY' else 2
-
-            case 'TAKE_PROFIT' | 'TAKE_PROFIT_MARKET':
-                params['triggerPrice'] = str(stop_price)
-                params['triggerDirection'] = 1 if side == 'SELL' else 2
-            case 'LIMIT':
+            case "STOP" | "STOP_MARKET":
+                if stop_price is not None:
+                    params["stopPrice"] = str(stop_price)
+            case "TAKE_PROFIT" | "TAKE_PROFIT_MARKET":
+                if stop_price is not None:
+                    params["stopPrice"] = str(stop_price)
+            case "LIMIT":
                 if stop_price:
-                    params['stopLoss'] = str(stop_price)
-                    # params['triggerDirection'] = 1 if side == 'BUY' else 2
+                    params["stopLoss"] = str(stop_price)
                 if take_price:
-                    params['takeProfit'] = str(take_price)
+                    params["takeProfit"] = str(take_price)
 
-        logger.debug('Order params: %s', params)
+        logger.debug("Order params: %s", params)
 
-        order = await self.post_request("/v5/order/create", body=params)
+        order = await self.post_request("/openApi/swap/v2/trade/order", body=params)
 
-        if order.get('retMsg') != 'OK':
-            logger.critical('Order fail: %s', order)
+        if order.get("retMsg") != "OK" and order.get("retCode") != 0:
+            logger.critical("Order fail: %s", order)
             raise Exception(order)
 
-        logger.info('new order created. id: %s', order['result']['orderId'])
-        return order['result']['orderId']
+        res = order.get("result") or {}
+        oid = res.get("orderId") if isinstance(res, dict) else None
+        if oid is None and isinstance(res, dict):
+            oid = (res.get("order") or {}).get("orderId")
+        logger.info("new order created. id: %s", oid)
+        return str(oid) if oid is not None else None
 
     async def cancel_all_orders(self):
-        logger.info('cancel_all_orders')
-        params = {
-            "category": self.category,
-            "settleCoin": 'USDT'
-        }
-        canceled_orders = await self.post_request("/v5/order/cancel-all", body=params)
-        logger.info('canceled_orders: %s', canceled_orders)
+        logger.info("cancel_all_orders (BingX: по символам открытых ордеров)")
+        open_resp = await self.get_request("/openApi/swap/v2/trade/openOrders", params={})
+        raw = open_resp.get("result") or {}
+        lst = raw.get("list") if isinstance(raw, dict) else raw
+        if not isinstance(lst, list):
+            lst = []
+        symbols = {str(o.get("symbol")) for o in lst if o.get("symbol")}
+        for sym in symbols:
+            await self.post_request(
+                "/openApi/swap/v2/trade/allOpenOrders",
+                body={"symbol": sym},
+            )
 
     async def cancel_order(self, symbol: str, order_id: str):
-        logger.info('_cancel_order %s id: %s', symbol, order_id)
+        logger.info("_cancel_order %s id: %s", symbol, order_id)
         params = {
-            "category": self.category,
-            "symbol": symbol,
-            "orderId": order_id
+            "symbol": _to_bingx_symbol(symbol),
+            "orderId": order_id,
         }
 
         try:
-            canceled_order = await self.post_request("/v5/order/cancel", body=params)
-            logger.debug('_cancel_order: %s', canceled_order)
+            canceled_order = await self.delete_request("/openApi/swap/v2/trade/order", params=params)
+            logger.debug("_cancel_order: %s", canceled_order)
             return True
         except exceptions.OrderNotExist:
             try:
@@ -521,29 +532,39 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
         page = 1
         max_pages = 20
         while not order_info:
-            params = {
-                "category": self.category,
-            }
+            params = {}
             if symbol:
-                params['symbol'] = symbol
+                params["symbol"] = _to_bingx_symbol(symbol)
 
             if order_id:
-                params['orderId'] = order_id
+                params["orderId"] = order_id
             else:
-                params['limit'] = '50'
+                params["limit"] = 50
                 if cursor:
-                    params['cursor'] = cursor
+                    params["cursor"] = cursor
 
             if start_time and end_time:
                 params["startTime"] = start_time
                 params["endTime"] = end_time
 
-            order_info = await self.get_request('/v5/order/history', params=params)
+            if order_id:
+                order_info = await self.get_request("/openApi/swap/v2/trade/order", params=params)
+            else:
+                order_info = await self.get_request("/openApi/swap/v2/trade/allOrders", params=params)
 
-            orders += order_info.get('result').get('list')
+            res = order_info.get("result") or {}
+            if order_id and isinstance(res, dict) and res.get("orderId"):
+                chunk = [res]
+            else:
+                chunk = res.get("list") if isinstance(res, dict) else None
+                if chunk is None and isinstance(res, list):
+                    chunk = res
+            chunk = chunk or []
+            orders += chunk
 
-            if not order_id and order_info['result']['nextPageCursor']:
-                cursor = order_info['result']['nextPageCursor']
+            next_cur = res.get("nextPageCursor") if isinstance(res, dict) else None
+            if not order_id and next_cur:
+                cursor = next_cur
                 if page < max_pages:
                     order_info = {}
                     page += 1
@@ -574,30 +595,12 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             if not order_id:
                 orders_list = []
                 for order in orders:
-                    if not order['takeProfit']:
-                        order['takeProfit'] = '0'
-                    if not order['stopLoss']:
-                        order['stopLoss'] = '0'
-                    if not order['avgPrice']:
-                        order['avgPrice'] = order['price']
-
-                    order_data = OrderData.model_validate(order)
-                    order_data.customize()
-                    orders_list.append(order_data)
-
+                    orders_list.append(_bingx_order_to_model(order))
                 return orders_list
 
             order = orders[0]
             logger.debug(order)
-            if not order['takeProfit']:
-                order['takeProfit'] = '0'
-            if not order['stopLoss']:
-                order['stopLoss'] = '0'
-            if not order['avgPrice']:
-                order['avgPrice'] = order['price']
-
-            order_data = OrderData.model_validate(order)
-            order_data.customize()
+            order_data = _bingx_order_to_model(order)
             return order_data
 
     async def _check_order(self, symbol: str, order_id: str):
@@ -633,64 +636,62 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             end_time = None,
             retries: int = 70,
     ) -> list[ExecutionsData]:
-        next_page_cursor = ''
+        _ = retries
+        next_page_cursor = ""
         executions = []
         limit = 100
-        params = {
-            'symbol': symbol,
-            'category': self.category,
-            'limit': limit,
-            # 'startTime': start_time,
-            # 'endTime': int(datetime.datetime.now().timestamp() * 1000)
+        params: dict = {
+            "symbol": _to_bingx_symbol(symbol),
+            "limit": limit,
         }
-        while True:
-            if start_time:
-                start_time = int(start_time * 1000)
-                end_time = int(end_time * 1000)
-                params['startTime'] = start_time
-                params['endTime'] = end_time
-            if next_page_cursor:
-                params['cursor'] = next_page_cursor
-                params['startTime'] = start_time
-                params['endTime'] = end_time
-                params.pop('startTime')
-                params.pop('endTime')
-            response = await self.get_request('/v5/execution/list', params=params)
-            # logger.debug(response)
-
-            if response['retCode'] == 0:
-                if response['result']:
-                    executions += response['result']['list']
+        if start_time is not None:
+            if isinstance(start_time, datetime.datetime):
+                params["startTime"] = int(start_time.timestamp() * 1000)
             else:
-                logger.critical(response)
-                raise Exception('get_executions ERROR')
+                params["startTime"] = int(start_time * 1000) if float(start_time) < 1e12 else int(start_time)
+        if end_time is not None:
+            if isinstance(end_time, datetime.datetime):
+                params["endTime"] = int(end_time.timestamp() * 1000)
+            else:
+                params["endTime"] = int(end_time * 1000) if float(end_time) < 1e12 else int(end_time)
 
-            if response['result']['nextPageCursor'] and len(response['result']['list']) == limit:
-                next_page_cursor = response['result']['nextPageCursor']
+        while True:
+            if next_page_cursor:
+                params["cursor"] = next_page_cursor
+            response = await self.get_request("/openApi/swap/v2/trade/myTrades", params=params)
+
+            if response.get("retMsg") != "OK" and response.get("retCode") != 0:
+                logger.critical(response)
+                raise Exception("get_executions ERROR")
+
+            res = response.get("result") or {}
+            chunk = res.get("list") if isinstance(res, dict) else None
+            if chunk is None and isinstance(res, list):
+                chunk = res
+            chunk = chunk or []
+            executions += chunk
+
+            next_cur = res.get("nextPageCursor") if isinstance(res, dict) else None
+            if next_cur and len(chunk) == limit:
+                next_page_cursor = next_cur
             else:
                 break
 
         executions_data = []
         for ex in executions:
-            if ex['execType'].upper() != 'TRADE':
-                continue
-
-            opening_position = True
-            if Decimal(ex['closedSize']) > 0:
-                opening_position = False
-            if opening_position:
-                position_side = ex['side'].upper()
-            else:
-                position_side = 'SELL' if ex['side'].upper() == 'BUY' else 'BUY'
+            qty = ex.get("qty") or ex.get("executedQty") or "0"
+            opening_position = Decimal(str(qty)) >= 0
+            ps = (ex.get("positionSide") or "LONG").upper()
+            position_side = "BUY" if ps == "LONG" else "SELL"
             data = ExecutionsData(
-                symbol=ex['symbol'],
+                symbol=(ex.get("symbol") or "").replace("-", ""),
                 opening_position=opening_position,
-                side=ex['side'],
+                side=ex.get("side", ""),
                 position_side=position_side,
-                exec_qty=ex['execQty'],
-                order_id=ex['orderId'],
-                price=ex['execPrice'],
-                time=ex.get('execTime'),
+                exec_qty=qty,
+                order_id=str(ex.get("orderId", "")),
+                price=ex.get("price") or ex.get("execPrice") or "0",
+                time=ex.get("time") or ex.get("fillTime"),
             )
             data.customize()
             executions_data.append(data)
@@ -736,125 +737,83 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             coin: str = None,
             retries: int = 70
     ) -> list[OrderData]:
-        logger.debug('get_open_orders for %s', symbol)
+        _ = coin, retries
+        logger.debug("get_open_orders for %s", symbol)
 
-        params = {
-            "category": self.category,
-        }
-
+        params = {}
         if symbol:
-            params['symbol'] = symbol.upper()
-        elif coin:
-            params['settleCoin'] = coin.upper()
-        else:
-            logger.critical('get_open_orders did not got symbol/coin')
-            raise AttributeError('get_open_orders did not got symbol/coin')
+            params["symbol"] = _to_bingx_symbol(symbol)
 
-        order_info = await self.get_request('/v5/order/realtime', params=params)
-        logger.debug('order_info: %s', order_info)
+        order_info = await self.get_request("/openApi/swap/v2/trade/openOrders", params=params)
+        logger.debug("order_info: %s", order_info)
 
-        if order_info.get('retMsg') != 'OK':
+        if order_info.get("retMsg") != "OK" and order_info.get("retCode") != 0:
             logger.critical(order_info)
             return []
 
-        orders_raw_list = order_info.get('result').get('list')
-        logger.debug('got_open_orders: %s', orders_raw_list)
+        raw = order_info.get("result") or {}
+        orders_raw_list = raw.get("list") if isinstance(raw, dict) else order_info.get("result")
+        if orders_raw_list is None and isinstance(raw, list):
+            orders_raw_list = raw
+        orders_raw_list = orders_raw_list or []
+        logger.debug("got_open_orders: %s", orders_raw_list)
 
         if not orders_raw_list:
-            logger.debug('orders not found')
+            logger.debug("orders not found")
             return []
 
-        orders = []
-        for order in orders_raw_list:
-            if not order['takeProfit']:
-                order['takeProfit'] = '0'
-            if not order['avgPrice']:
-                order['avgPrice'] = order['price']
-            if not order['stopLoss']:
-                order['stopLoss'] = '0'
-
-            order_data = OrderData.model_validate(order)
-            order_data.customize()
-            orders.append(order_data)
-        return orders
+        return [_bingx_order_to_model(order) for order in orders_raw_list]
 
     async def get_all_positions(self) -> list[PositionData]:
-        params = {
-            "category": self.category,
-            "settleCoin": 'USDT',
-        }
-        position_response = await self.get_request("/v5/position/list", params=params)
+        position_response = await self.get_request("/openApi/swap/v2/user/positions", params={})
+        raw = position_response.get("result") or {}
+        lst = raw.get("list") if isinstance(raw, dict) else None
+        if lst is None and isinstance(raw, list):
+            lst = raw
+        lst = lst or []
 
         positions = []
-        for position in position_response['result']['list']:
-            if position['liqPrice'] == '':
-                position['liqPrice'] = '0.000000000001'
-
-            if position['unrealisedPnl'] == '':
-                position['unrealisedPnl'] = '0'
-            if position['stopLoss'] == '':
-                position['stopLoss'] = '0'
-            if position['takeProfit'] == '':
-                position['takeProfit'] = '0'
-            positions.append(PositionData.model_validate(position))
+        for position in lst:
+            amt = Decimal(str(position.get("positionAmt") or "0"))
+            if amt == 0:
+                continue
+            positions.append(_bingx_position_to_model(position))
         return positions
 
     async def get_position(self, symbol: str, side: str, empty_available: bool = False) -> PositionData | None:
-        side = side.upper()
-        retries = 100
-        params = {
-            "category": self.category,
-            "symbol": symbol
-        }
-        position_response = await self.get_request("/v5/position/list", params=params)
+        side_u = side.upper()
+        _ = empty_available
+        position_response = await self.get_request(
+            "/openApi/swap/v2/user/positions",
+            params={"symbol": _to_bingx_symbol(symbol)},
+        )
+        raw = position_response.get("result") or {}
+        positions_list = raw.get("list") if isinstance(raw, dict) else None
+        if positions_list is None and isinstance(raw, list):
+            positions_list = raw
+        positions_list = positions_list or []
 
-        # logger.debug('get_positions for %s response: %s', symbol, position_response)
-        positions_list = position_response['result']['list']
-
-        if not positions_list:
-            return None
-
+        want_ps = "LONG" if side_u == "BUY" else "SHORT"
         position = None
         zero_position = None
         for pos in positions_list:
-            if pos.get('side').upper() == side:
+            ps = (pos.get("positionSide") or "").upper()
+            if ps == want_ps:
                 position = pos
                 break
-            elif (empty_available and (pos.get('positionIdx') == 2 and side == 'SELL') or (pos.get('positionIdx') == 1 and side == 'BUY')):
-                """ 'positionIdx': 2 is for SELL position 'positionIdx': 1 is for BUY position"""
+            if Decimal(str(pos.get("positionAmt") or "0")) == 0:
                 zero_position = pos
 
         if position is None:
             if zero_position is None:
                 return None
-            else:
-                position = zero_position
-                position['side'] = side
+            position = dict(zero_position)
+            position["positionSide"] = want_ps
 
-        position['side'] = position['side'].upper()
-
-        if position['liqPrice'] == '':
-            position['liqPrice'] = '0.000000000001'
-        if empty_available and position['avgPrice'] == '':
-            position['avgPrice'] = '0.000000000001'
-        if empty_available and position['createdTime'] == '':
-            position['createdTime'] = datetime.datetime.now()
-            position['updatedTime'] = datetime.datetime.now()
-
-        if position['avgPrice'] == '' and not empty_available:
+        if Decimal(str(position.get("positionAmt") or "0")) == 0 and not empty_available:
             return None
 
-        if position['unrealisedPnl'] == '':
-            position['unrealisedPnl'] = '0'
-        if position['stopLoss'] == '':
-            position['stopLoss'] = '0'
-        if position['takeProfit'] == '':
-            position['takeProfit'] = '0'
-
-        position_data = PositionData.model_validate(position)
-        logger.debug('position data: %s', position_data)
-
-        return position_data
+        return _bingx_position_to_model(position)
 
     async def close_all_positions(self, symbol: str, position_data: PositionData):
         logger.warning('close_all_positions')
@@ -896,32 +855,37 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
                 params['cursor'] = cursor
 
             try:
-                response = await self.get_request("/v5/asset/deposit/query-internal-record", params=params)
+                response = await self.get_request(
+                    "/openApi/wallet/v1/capital/deposit/hisrec",
+                    params=params,
+                )
 
             except Exception as e:
-                logger.critical('Unexpected error: % s | %s', type(e), e)
+                logger.critical("Unexpected error: %s | %s", type(e), e)
                 logger.exception(e)
-                raise e
-
                 retries -= 1
                 if not retries:
                     raise e
                 await asyncio.sleep(0.5)
+                continue
 
             if response:
-                logger.debug('response: %s', response)
+                logger.debug("response: %s", response)
 
-                for transfer in response['result']['rows']:
+                res = response.get("result") or {}
+                rows = res.get("rows") or res.get("data") or res.get("list") or []
+                if isinstance(rows, dict):
+                    rows = rows.get("rows") or []
+                for transfer in rows:
                     transfers_list.append(transfer)
-                if response['result']['nextPageCursor']:
-                    cursor = response['result']['nextPageCursor']
+                next_cur = res.get("nextPageCursor") if isinstance(res, dict) else None
+                if next_cur:
+                    cursor = next_cur
                     response = None
                     continue
-                else:
-                    logger.debug('trafers_list: %s', transfers_list)
-                    return transfers_list
-            else:
-                raise Exception
+                logger.debug("trafers_list: %s", transfers_list)
+                return transfers_list
+            raise Exception("empty deposit response")
 
     async def get_closed_pnl_history(
             self,
@@ -946,19 +910,19 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
 
                 return results
 
-        params = {
-            "category": self.category,
-            "limit": 100
+        params: dict = {
+            "incomeType": "REALIZED_PNL",
+            "limit": 100,
         }
 
         if symbol:
-            params['symbol'] = symbol
+            params["symbol"] = _to_bingx_symbol(symbol)
 
         if start_time and end_time:
-            params["startTime"] = str(start_time)
-            params["endTime"] = str(end_time)
+            params["startTime"] = start_time
+            params["endTime"] = end_time
 
-        logger.debug('get_closed_pnl start: %s | end: %s', start_time, end_time)
+        logger.debug("get_closed_pnl start: %s | end: %s", start_time, end_time)
 
         response = None
         retries = 15
@@ -966,21 +930,31 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
         pnls_list = []
         while retries and not response:
             if cursor:
-                params['cursor'] = cursor
+                params["cursor"] = cursor
 
-            response = await self.get_request("/v5/position/closed-pnl", params=params)
+            response = await self.get_request("/openApi/swap/v2/user/income", params=params)
 
-            if response['result']:
-                for pnl in response['result']['list']:
-                    pnls_list.append(PNLData.model_validate(pnl))
-                if response['result']['nextPageCursor']:
-                    cursor = response['result']['nextPageCursor']
-                    response = None
-                    continue
-                else:
-                    return pnls_list
-            else:
-                raise Exception(f'response error: {response}')
+            res = response.get("result") or {}
+            lst = res.get("list") if isinstance(res, dict) else None
+            if lst is None and isinstance(res, list):
+                lst = res
+            lst = lst or []
+
+            for r in lst:
+                row = {
+                    "orderId": str(r.get("orderId") or r.get("infoId") or r.get("tradeId", "")),
+                    "symbol": (r.get("symbol") or "").replace("-", ""),
+                    "income": r.get("income") or r.get("amount") or "0",
+                    "createdTime": int(r.get("time") or 0),
+                    "updatedTime": int(r.get("time") or 0),
+                }
+                pnls_list.append(PNLData.model_validate(row))
+            next_cur = res.get("nextPageCursor") if isinstance(res, dict) else None
+            if next_cur:
+                cursor = next_cur
+                response = None
+                continue
+            return pnls_list
 
     async def get_closed_pnls_list(
             self,
