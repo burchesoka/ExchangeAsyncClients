@@ -123,6 +123,28 @@ def _bingx_list_from_result(res: dict | list | None, *array_keys: str) -> list:
     return []
 
 
+def _bingx_status_terminal_for_history(status: str | None) -> bool:
+    """
+    Как Bybit /v5/order/history: в «истории» только завершённые ордера.
+    Активные (PENDING, PARTIALLY_FILLED, …) для get_order_history(order_id) — как отсутствующие.
+    """
+    if not status:
+        return False
+    u = status.upper().replace(" ", "_")
+    if u in (
+        "FILLED",
+        "CANCELED",
+        "CANCELLED",
+        "REJECTED",
+        "EXPIRED",
+        "FAILED",
+    ):
+        return True
+    if "CANCEL" in u:
+        return True
+    return False
+
+
 def _bingx_order_to_model(order: dict) -> OrderData:
     """Поля ответа BingX swap -> OrderData."""
     orig = order.get("origQty") or order.get("qty") or "0"
@@ -645,6 +667,14 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
 
             order = orders[0]
             logger.debug(order)
+            raw_status = order.get("status") or order.get("orderStatus") or ""
+            if not _bingx_status_terminal_for_history(raw_status):
+                logger.debug(
+                    "get_order_history: order %s not in terminal state (%s) — OrderNotFound (Bybit-compatible)",
+                    order_id,
+                    raw_status,
+                )
+                raise exceptions.OrderNotFound
             order_data = _bingx_order_to_model(order)
             return order_data
 
