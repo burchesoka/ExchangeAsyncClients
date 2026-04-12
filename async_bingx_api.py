@@ -48,7 +48,7 @@ class BingxAPI(BaseAsyncExchangeAPI):
             "/openApi/swap/v2/trade/marginType": "5",
             "/openApi/swap/v2/trade/positionSide/dual": "5",
             "/openApi/swap/v2/user/tradeHistory": "10",
-            "/openApi/swap/v2/trade/myTrades": "10",
+            "/openApi/swap/v2/trade/allFillOrders": "10",
             "/openApi/swap/v2/user/income": "5",
             "/openApi/wallet/v1/capital/deposit/hisrec": "5",
         }

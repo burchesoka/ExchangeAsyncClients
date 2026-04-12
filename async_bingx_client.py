@@ -658,7 +658,7 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
         while True:
             if next_page_cursor:
                 params["cursor"] = next_page_cursor
-            response = await self.get_request("/openApi/swap/v2/trade/myTrades", params=params)
+            response = await self.get_request("/openApi/swap/v2/trade/allFillOrders", params=params)
 
             if response.get("retMsg") != "OK" and response.get("retCode") != 0:
                 logger.critical(response)
