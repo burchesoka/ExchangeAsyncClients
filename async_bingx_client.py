@@ -84,6 +84,31 @@ def _bingx_position_to_model(pos: dict) -> PositionData:
     return pd
 
 
+def _bingx_tp_sl_price(
+    order: dict,
+    *,
+    nested: str,
+    entrust: str,
+    flat_fallback: str | None = None,
+) -> str:
+    """BingX отдаёт takeProfit/stopLoss как вложенный объект {type, stopPrice, price, ...} или числом."""
+    raw = order.get(nested)
+    if isinstance(raw, dict):
+        p = raw.get("stopPrice") or raw.get("price")
+        if p not in (None, "", 0):
+            return str(p)
+    elif raw not in (None, "", 0):
+        return str(raw)
+    ev = order.get(entrust)
+    if ev not in (None, "", 0):
+        return str(ev)
+    if flat_fallback:
+        fb = order.get(flat_fallback)
+        if fb not in (None, ""):
+            return str(fb)
+    return "0"
+
+
 def _bingx_order_to_model(order: dict) -> OrderData:
     """Поля ответа BingX swap -> OrderData."""
     orig = order.get("origQty") or order.get("qty") or "0"
@@ -102,8 +127,10 @@ def _bingx_order_to_model(order: dict) -> OrderData:
         "side": order.get("side", ""),
         "price": str(order.get("price") or "0"),
         "avgPrice": str(order.get("avgPrice") or order.get("avgPx") or "0"),
-        "takeProfit": str(order.get("takeProfit") or order.get("profit") or "0"),
-        "stopLoss": str(order.get("stopLoss") or order.get("stopPrice") or "0"),
+        "takeProfit": _bingx_tp_sl_price(order, nested="takeProfit", entrust="takeProfitEntrustPrice"),
+        "stopLoss": _bingx_tp_sl_price(
+            order, nested="stopLoss", entrust="stopLossEntrustPrice", flat_fallback="stopPrice"
+        ),
         "orderStatus": order.get("status") or order.get("orderStatus") or "NEW",
         "createdTime": str(order.get("time") or order.get("createTime") or "0"),
         "updatedTime": str(order.get("updateTime") or order.get("time") or "0"),
@@ -555,8 +582,14 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
                 order_info = await self.get_request("/openApi/swap/v2/trade/allOrders", params=params)
 
             res = order_info.get("result") or {}
-            if order_id and isinstance(res, dict) and res.get("orderId"):
-                chunk = [res]
+            if order_id and isinstance(res, dict):
+                nested = res.get("order") if isinstance(res.get("order"), dict) else None
+                if res.get("orderId") is not None:
+                    chunk = [res]
+                elif nested is not None and nested.get("orderId") is not None:
+                    chunk = [nested]
+                else:
+                    chunk = []
             else:
                 chunk = res.get("list") if isinstance(res, dict) else None
                 if chunk is None and isinstance(res, list):
