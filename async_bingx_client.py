@@ -533,9 +533,9 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
         lst = _bingx_list_from_result(raw)
         symbols = {str(o.get("symbol")) for o in lst if o.get("symbol")}
         for sym in symbols:
-            await self.post_request(
+            await self.delete_request(
                 "/openApi/swap/v2/trade/allOpenOrders",
-                body={"symbol": sym},
+                params={"symbol": sym},
             )
 
     async def cancel_order(self, symbol: str, order_id: str):
