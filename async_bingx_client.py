@@ -109,6 +109,20 @@ def _bingx_tp_sl_price(
     return "0"
 
 
+def _bingx_list_from_result(res: dict | list | None, *array_keys: str) -> list:
+    """Массив в ответе BingX может быть в `list`, `orders` и т.п."""
+    keys = array_keys or ("list", "orders")
+    if isinstance(res, list):
+        return res
+    if not isinstance(res, dict):
+        return []
+    for k in keys:
+        v = res.get(k)
+        if isinstance(v, list):
+            return v
+    return []
+
+
 def _bingx_order_to_model(order: dict) -> OrderData:
     """Поля ответа BingX swap -> OrderData."""
     orig = order.get("origQty") or order.get("qty") or "0"
@@ -494,9 +508,7 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
         logger.info("cancel_all_orders (BingX: по символам открытых ордеров)")
         open_resp = await self.get_request("/openApi/swap/v2/trade/openOrders", params={})
         raw = open_resp.get("result") or {}
-        lst = raw.get("list") if isinstance(raw, dict) else raw
-        if not isinstance(lst, list):
-            lst = []
+        lst = _bingx_list_from_result(raw)
         symbols = {str(o.get("symbol")) for o in lst if o.get("symbol")}
         for sym in symbols:
             await self.post_request(
@@ -591,9 +603,7 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
                 else:
                     chunk = []
             else:
-                chunk = res.get("list") if isinstance(res, dict) else None
-                if chunk is None and isinstance(res, list):
-                    chunk = res
+                chunk = _bingx_list_from_result(res)
             chunk = chunk or []
             orders += chunk
 
@@ -700,9 +710,7 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
                 raise Exception("get_executions ERROR")
 
             res = response.get("result") or {}
-            chunk = res.get("list") if isinstance(res, dict) else None
-            if chunk is None and isinstance(res, list):
-                chunk = res
+            chunk = _bingx_list_from_result(res)
             chunk = chunk or []
             executions += chunk
 
@@ -787,10 +795,7 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             return []
 
         raw = order_info.get("result") or {}
-        orders_raw_list = raw.get("list") if isinstance(raw, dict) else order_info.get("result")
-        if orders_raw_list is None and isinstance(raw, list):
-            orders_raw_list = raw
-        orders_raw_list = orders_raw_list or []
+        orders_raw_list = _bingx_list_from_result(raw)
         logger.debug("got_open_orders: %s", orders_raw_list)
 
         if not orders_raw_list:
