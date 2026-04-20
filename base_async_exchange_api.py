@@ -152,7 +152,7 @@ class BaseAsyncExchangeAPI(ABC):
                         headers=headers,
                         data=body,
                     ) as resp:
-                        logger.debug('resp: %s %s %s %s', await resp.text(), url, params, body)
+                        logger.debug('resp: %s %s %s %s %s', resp, resp.status, url, params, body)
                         logger.debug('request_weight %s %s %s %s', request_weight, method, endpoint, params)
                         logger.debug('%s level %s ', self.limiters_dict[endpoint], limiter._level)
                         resp_headers_limit = self._extract_limit_from_headers(resp.headers)

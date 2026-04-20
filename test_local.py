@@ -3,6 +3,9 @@ import time
 import datetime
 from decimal import Decimal
 import logging
+import os
+
+from dotenv import load_dotenv
 
 import aiohttp
 
@@ -10,6 +13,9 @@ from base import MarginMode, PositionData
 import exceptions
 from clients import AsyncBybitFuturesClient, AsyncBinanceFuturesClient, AsyncBingxFuturesClient
 from clients.base import INTERVAL_IN_SEC, PositionMode, OrderData
+
+
+load_dotenv()
 
 
 def setup_logging():

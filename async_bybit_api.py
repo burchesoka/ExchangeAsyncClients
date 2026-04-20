@@ -176,15 +176,25 @@ class BybitAPI(BaseAsyncExchangeAPI):
         return dict(headers).get("X-Bapi-Limit")
 
     def _is_success_response(self, response: dict, status_code: int) -> bool:
-        return response.get("retCode") == 0
+        if response:
+            return response.get("retCode") == 0
+        if status_code == 200:
+            return True
+        return False
 
     async def _handle_error_response(self, response: dict, status_code: int, url: str):
+        if status_code == 401:
+            logger.critical('Response error %s %s url: %s', status_code, response, url)
+            raise exceptions.AuthenticationError
+
         ret_code = response.get('retCode')
         ret_msg = response.get('retMsg')
         if ret_code == 10002 or 'please check your server timestamp or recv_window param' in ret_msg:
             await self.update_recv_window_shift()
             raise exceptions.InvalidNonce
-        elif ret_code == 110043 or "leverage not modified" in response.get('retMsg'):
+        elif ret_code == 33004 or 'Your api key has expired' in ret_msg:
+            raise exceptions.AuthErrorExpiredKeys
+        elif ret_code == 110043 or "leverage not modified" in ret_msg:
             raise exceptions.LeverageNotModified
         elif ret_code == 110025 or "Position mode is not modified" in ret_msg:
             raise exceptions.NoChange
