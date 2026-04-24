@@ -16,6 +16,7 @@ WSS_NAME = "Binance Futures"
 PRIVATE_WSS = "wss://fstream.binance.com/ws/{listen_key}"
 PUBLIC_WSS = "wss://fstream.binance.com/ws"
 PUBLIC_WSS_COMBINED = "wss://fstream.binance.com/stream?streams={streams}"
+PUBLIC_WSS_SINGLE_STREAM = "wss://fstream.binance.com/ws/{stream}"
 FAPI_BASE_URL = "https://fapi.binance.com"
 
 
@@ -289,33 +290,38 @@ class AsyncBinanceWebsocket:
     async def public_ws(self, klines_topics: list[str]):
         normalized_topics = self.normalize_public_topics(klines_topics)
         logger.info("Binance public subscribe params: %s", normalized_topics)
-        streams = "/".join(normalized_topics)
-        url = PUBLIC_WSS_COMBINED.format(streams=streams)
+        # В некоторых окружениях combined stream может молчать.
+        # Используем отдельное соединение на каждый stream.
+        loops = [self._public_ws_single_stream(stream_name=topic) for topic in normalized_topics]
+        await asyncio.gather(*loops)
 
+    async def _public_ws_single_stream(self, stream_name: str):
+        url = PUBLIC_WSS_SINGLE_STREAM.format(stream=stream_name)
         async for ws in websockets.asyncio.client.connect(
             url,
             ping_interval=45,
         ):
             try:
-                logger.info("Public WS Connected")
+                logger.info("Public WS Connected stream=%s", stream_name)
 
                 debug_msgs_left = 5
                 async for raw_msg in ws:
                     msg = json.loads(raw_msg)
                     if debug_msgs_left > 0:
-                        logger.info("Binance public raw msg: %s", msg)
+                        logger.info("Binance public raw msg stream=%s: %s", stream_name, msg)
                         debug_msgs_left -= 1
 
-                    payload = msg.get("data", msg)
-                    stream = payload.get("e", "") or msg.get("stream", "")
+                    stream = msg.get("e", "")
                     if not stream:
                         continue
 
                     if "kline" in stream:
-                        data = payload.get("k")
+                        data = msg.get("k")
                         if not isinstance(data, dict):
                             continue
-                        symbol = data.get("s").upper()
+                        symbol = data.get("s", "").upper()
+                        if not symbol:
+                            continue
                         if symbol not in self.klines_queues:
                             self.klines_queues[symbol] = asyncio.Queue()
                         normalized = self._normalize_kline(symbol=symbol, raw=data)
@@ -331,7 +337,7 @@ class AsyncBinanceWebsocket:
                 logger.exception(e)
                 break
 
-        logger.info("Public WS Disconnected")
+        logger.info("Public WS Disconnected stream=%s", stream_name)
 
     async def orders_getter_loop(self):
         while True:
