@@ -365,8 +365,29 @@ class AsyncBinanceWebsocket:
     
     async def get_klines_test(self):
         while True:
-            klines = await self.klines_queues['BTCUSDT'].get()
-            print(f'!!!!!!!!!---- {klines}')
+            if not self.klines_queues:
+                await asyncio.sleep(0.1)
+                continue
+
+            queue_tasks = {
+                asyncio.create_task(queue.get()): symbol
+                for symbol, queue in self.klines_queues.items()
+            }
+            done, pending = await asyncio.wait(
+                queue_tasks.keys(),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+
+            for task in done:
+                symbol = queue_tasks[task]
+                try:
+                    klines = task.result()
+                except Exception as e:
+                    logger.error("get_klines_test failed for %s: %s", symbol, e)
+                    continue
+                print(f'!!!!!!!!!---- {symbol}: {klines}')
 
     async def get_orders_test(self):
         while True:
