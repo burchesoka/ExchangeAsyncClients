@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 WSS_NAME = "Binance Futures"
 PRIVATE_WSS = "wss://fstream.binance.com/ws/{listen_key}"
 PUBLIC_WSS = "wss://fstream.binance.com/ws"
+PUBLIC_WSS_COMBINED = "wss://fstream.binance.com/stream?streams={streams}"
 FAPI_BASE_URL = "https://fapi.binance.com"
 
 
@@ -170,6 +171,41 @@ class AsyncBinanceWebsocket:
             )
         )
 
+    def normalize_public_topics(self, klines_topics: list[str]) -> list[str]:
+        normalized_topics = []
+        for topic in klines_topics:
+            t = topic.strip()
+            if "@kline_" in t.lower():
+                normalized_topics.append(t.lower())
+                continue
+
+            if t.lower().startswith("kline."):
+                parts = t.split(".")
+                if len(parts) == 3:
+                    _, interval, symbol = parts
+                    bybit_to_binance = {
+                        "1": "1m",
+                        "3": "3m",
+                        "5": "5m",
+                        "15": "15m",
+                        "30": "30m",
+                        "60": "1h",
+                        "120": "2h",
+                        "240": "4h",
+                        "360": "6h",
+                        "480": "8h",
+                        "720": "12h",
+                        "D": "1d",
+                        "W": "1w",
+                        "M": "1M",
+                    }
+                    binance_interval = bybit_to_binance.get(interval.upper(), "1m")
+                    normalized_topics.append(f"{symbol.lower()}@kline_{binance_interval}")
+                    continue
+
+            normalized_topics.append(f"{t.lower()}@kline_1m")
+        return normalized_topics
+
     async def private_ws(self, orders: bool, wallet: bool):
         if not any([orders, wallet]):
             raise ValueError
@@ -251,13 +287,17 @@ class AsyncBinanceWebsocket:
         logger.info("Private WS Disconnected")
 
     async def public_ws(self, klines_topics: list[str]):
+        normalized_topics = self.normalize_public_topics(klines_topics)
+        logger.info("Binance public subscribe params: %s", normalized_topics)
+        streams = "/".join(normalized_topics)
+        url = PUBLIC_WSS_COMBINED.format(streams=streams)
+
         async for ws in websockets.asyncio.client.connect(
-            PUBLIC_WSS,
+            url,
             ping_interval=45,
         ):
             try:
                 logger.info("Public WS Connected")
-                await self.subscribe_public(ws, klines_topics=klines_topics)
 
                 debug_msgs_left = 5
                 async for raw_msg in ws:
@@ -269,8 +309,6 @@ class AsyncBinanceWebsocket:
                     payload = msg.get("data", msg)
                     stream = payload.get("e", "") or msg.get("stream", "")
                     if not stream:
-                        if msg.get("result") is None and msg.get("id") is not None:
-                            logger.info("Binance public subscribe ack received: %s", msg)
                         continue
 
                     if "kline" in stream:
