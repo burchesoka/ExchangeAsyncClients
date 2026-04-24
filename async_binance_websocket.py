@@ -126,8 +126,12 @@ class AsyncBinanceWebsocket:
         normalized_topics = []
         for topic in klines_topics:
             t = topic.strip()
-            if "@kline_" in t:
+            if "@kline_" in t.lower():
                 normalized_topics.append(t.lower())
+                continue
+
+            # Fallback: только символ -> подписываемся на 1m
+            normalized_topics.append(f"{t.lower()}@kline_1m")
 
         await ws.send(
             json.dumps(
@@ -232,12 +236,15 @@ class AsyncBinanceWebsocket:
                     msg = json.loads(raw_msg)
                     # logger.debug(msg)
 
-                    stream = msg.get("e", "") or msg.get("stream", "")
+                    payload = msg.get("data", msg)
+                    stream = payload.get("e", "") or msg.get("stream", "")
                     if not stream:
                         continue
 
                     if "kline" in stream:
-                        data = msg.get("k")
+                        data = payload.get("k")
+                        if not isinstance(data, dict):
+                            continue
                         symbol = data.get("s").upper()
                         normalized = self._normalize_kline(symbol=symbol, raw=data)
                         if normalized:
