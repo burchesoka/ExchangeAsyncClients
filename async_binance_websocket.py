@@ -13,10 +13,10 @@ logger = logging.getLogger(__name__)
 
 
 WSS_NAME = "Binance Futures"
-PRIVATE_WSS = "wss://fstream.binance.com/ws/{listen_key}"
-PUBLIC_WSS = "wss://fstream.binance.com/ws"
-PUBLIC_WSS_COMBINED = "wss://fstream.binance.com/stream?streams={streams}"
-PUBLIC_WSS_SINGLE_STREAM = "wss://fstream.binance.com/ws/{stream}"
+PRIVATE_WSS = "wss://fstream.binance.com/private/ws/{listen_key}"
+PUBLIC_WSS = "wss://fstream.binance.com/public"
+MARKET_WSS = "wss://fstream.binance.com/market"
+MARKET_STREAM_WSS = "wss://fstream.binance.com/market/ws/{stream}"
 FAPI_BASE_URL = "https://fapi.binance.com"
 
 
@@ -124,87 +124,16 @@ class AsyncBinanceWebsocket:
         except Exception as e:
             logger.debug("listenKey close failed: %s", e)
 
-    async def subscribe_public(self, ws, klines_topics: list[str]):
+    def _normalize_public_topics(self, klines_topics: list[str]) -> list[str]:
         normalized_topics = []
         for topic in klines_topics:
-            t = topic.strip()
-            if "@kline_" in t.lower():
+            t = topic.strip().lower()
+            if "@kline_" in t:
                 normalized_topics.append(t.lower())
                 continue
 
-            # Bybit-like формат: kline.1.BTCUSDT -> btcusdt@kline_1m
-            if t.lower().startswith("kline."):
-                parts = t.split(".")
-                if len(parts) == 3:
-                    _, interval, symbol = parts
-                    bybit_to_binance = {
-                        "1": "1m",
-                        "3": "3m",
-                        "5": "5m",
-                        "15": "15m",
-                        "30": "30m",
-                        "60": "1h",
-                        "120": "2h",
-                        "240": "4h",
-                        "360": "6h",
-                        "480": "8h",
-                        "720": "12h",
-                        "D": "1d",
-                        "W": "1w",
-                        "M": "1M",
-                    }
-                    binance_interval = bybit_to_binance.get(interval.upper(), "1m")
-                    normalized_topics.append(f"{symbol.lower()}@kline_{binance_interval}")
-                    continue
-
-            # Fallback: передали только символ -> 1m
-            normalized_topics.append(f"{t.lower()}@kline_1m")
-
-        logger.info("Binance public subscribe params: %s", normalized_topics)
-
-        await ws.send(
-            json.dumps(
-                {
-                    "method": "SUBSCRIBE",
-                    "params": normalized_topics,
-                    "id": int(time.time() * 1000),
-                }
-            )
-        )
-
-    def normalize_public_topics(self, klines_topics: list[str]) -> list[str]:
-        normalized_topics = []
-        for topic in klines_topics:
-            t = topic.strip()
-            if "@kline_" in t.lower():
-                normalized_topics.append(t.lower())
-                continue
-
-            if t.lower().startswith("kline."):
-                parts = t.split(".")
-                if len(parts) == 3:
-                    _, interval, symbol = parts
-                    bybit_to_binance = {
-                        "1": "1m",
-                        "3": "3m",
-                        "5": "5m",
-                        "15": "15m",
-                        "30": "30m",
-                        "60": "1h",
-                        "120": "2h",
-                        "240": "4h",
-                        "360": "6h",
-                        "480": "8h",
-                        "720": "12h",
-                        "D": "1d",
-                        "W": "1w",
-                        "M": "1M",
-                    }
-                    binance_interval = bybit_to_binance.get(interval.upper(), "1m")
-                    normalized_topics.append(f"{symbol.lower()}@kline_{binance_interval}")
-                    continue
-
-            normalized_topics.append(f"{t.lower()}@kline_1m")
+            # Fallback: symbol only -> 1m
+            raise AttributeError(f'No period {klines_topics}')
         return normalized_topics
 
     async def private_ws(self, orders: bool, wallet: bool):
@@ -288,40 +217,35 @@ class AsyncBinanceWebsocket:
         logger.info("Private WS Disconnected")
 
     async def public_ws(self, klines_topics: list[str]):
-        normalized_topics = self.normalize_public_topics(klines_topics)
-        logger.info("Binance public subscribe params: %s", normalized_topics)
-        # В некоторых окружениях combined stream может молчать.
-        # Используем отдельное соединение на каждый stream.
-        loops = [self._public_ws_single_stream(stream_name=topic) for topic in normalized_topics]
+        normalized_topics = self._normalize_public_topics(klines_topics)
+        logger.info("Binance market streams: %s", normalized_topics)
+        loops = [
+            self._public_stream_loop(stream_topic=topic)
+            for topic in normalized_topics
+        ]
         await asyncio.gather(*loops)
 
-    async def _public_ws_single_stream(self, stream_name: str):
-        url = PUBLIC_WSS_SINGLE_STREAM.format(stream=stream_name)
+    async def _public_stream_loop(self, stream_topic: str):
+        url = MARKET_STREAM_WSS.format(stream=stream_topic)
         async for ws in websockets.asyncio.client.connect(
             url,
             ping_interval=45,
         ):
             try:
-                logger.info("Public WS Connected stream=%s", stream_name)
+                logger.info("Public WS Connected stream=%s", stream_topic)
 
-                debug_msgs_left = 5
                 async for raw_msg in ws:
                     msg = json.loads(raw_msg)
-                    if debug_msgs_left > 0:
-                        logger.info("Binance public raw msg stream=%s: %s", stream_name, msg)
-                        debug_msgs_left -= 1
-
-                    stream = msg.get("e", "")
+                    payload = msg.get("data", msg)
+                    stream = payload.get("e", "") or msg.get("stream", "")
                     if not stream:
                         continue
 
                     if "kline" in stream:
-                        data = msg.get("k")
+                        data = payload.get("k")
                         if not isinstance(data, dict):
                             continue
-                        symbol = data.get("s", "").upper()
-                        if not symbol:
-                            continue
+                        symbol = data.get("s").upper()
                         if symbol not in self.klines_queues:
                             self.klines_queues[symbol] = asyncio.Queue()
                         normalized = self._normalize_kline(symbol=symbol, raw=data)
@@ -337,7 +261,7 @@ class AsyncBinanceWebsocket:
                 logger.exception(e)
                 break
 
-        logger.info("Public WS Disconnected stream=%s", stream_name)
+        logger.info("Public WS Disconnected stream=%s", stream_topic)
 
     async def orders_getter_loop(self):
         while True:
@@ -409,29 +333,8 @@ class AsyncBinanceWebsocket:
     
     async def get_klines_test(self):
         while True:
-            if not self.klines_queues:
-                await asyncio.sleep(0.1)
-                continue
-
-            queue_tasks = {
-                asyncio.create_task(queue.get()): symbol
-                for symbol, queue in self.klines_queues.items()
-            }
-            done, pending = await asyncio.wait(
-                queue_tasks.keys(),
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            for task in pending:
-                task.cancel()
-
-            for task in done:
-                symbol = queue_tasks[task]
-                try:
-                    klines = task.result()
-                except Exception as e:
-                    logger.error("get_klines_test failed for %s: %s", symbol, e)
-                    continue
-                print(f'!!!!!!!!!---- {symbol}: {klines}')
+            klines = await self.klines_queues['BTCUSDT'].get()
+            print(f'!!!!!!!!!---- {klines}')
 
     async def get_orders_test(self):
         while True:
