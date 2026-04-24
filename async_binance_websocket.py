@@ -130,7 +130,35 @@ class AsyncBinanceWebsocket:
                 normalized_topics.append(t.lower())
                 continue
 
-            raise AttributeError(f'No period {klines_topics}')
+            # Bybit-like формат: kline.1.BTCUSDT -> btcusdt@kline_1m
+            if t.lower().startswith("kline."):
+                parts = t.split(".")
+                if len(parts) == 3:
+                    _, interval, symbol = parts
+                    bybit_to_binance = {
+                        "1": "1m",
+                        "3": "3m",
+                        "5": "5m",
+                        "15": "15m",
+                        "30": "30m",
+                        "60": "1h",
+                        "120": "2h",
+                        "240": "4h",
+                        "360": "6h",
+                        "480": "8h",
+                        "720": "12h",
+                        "D": "1d",
+                        "W": "1w",
+                        "M": "1M",
+                    }
+                    binance_interval = bybit_to_binance.get(interval.upper(), "1m")
+                    normalized_topics.append(f"{symbol.lower()}@kline_{binance_interval}")
+                    continue
+
+            # Fallback: передали только символ -> 1m
+            normalized_topics.append(f"{t.lower()}@kline_1m")
+
+        logger.info("Binance public subscribe params: %s", normalized_topics)
 
         await ws.send(
             json.dumps(
@@ -231,13 +259,18 @@ class AsyncBinanceWebsocket:
                 logger.info("Public WS Connected")
                 await self.subscribe_public(ws, klines_topics=klines_topics)
 
+                debug_msgs_left = 5
                 async for raw_msg in ws:
                     msg = json.loads(raw_msg)
-                    # logger.debug(msg)
+                    if debug_msgs_left > 0:
+                        logger.info("Binance public raw msg: %s", msg)
+                        debug_msgs_left -= 1
 
                     payload = msg.get("data", msg)
                     stream = payload.get("e", "") or msg.get("stream", "")
                     if not stream:
+                        if msg.get("result") is None and msg.get("id") is not None:
+                            logger.info("Binance public subscribe ack received: %s", msg)
                         continue
 
                     if "kline" in stream:
@@ -245,6 +278,8 @@ class AsyncBinanceWebsocket:
                         if not isinstance(data, dict):
                             continue
                         symbol = data.get("s").upper()
+                        if symbol not in self.klines_queues:
+                            self.klines_queues[symbol] = asyncio.Queue()
                         normalized = self._normalize_kline(symbol=symbol, raw=data)
                         if normalized:
                             await self.klines_queues[symbol].put(normalized)
