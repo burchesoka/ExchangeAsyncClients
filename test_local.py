@@ -672,7 +672,6 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
 
 if __name__ == "__main__":
     ''' pip install python-dotenv '''
-    # asyncio.run(main())
+    asyncio.run(main())
     # test_bybit_websocket(bybit_api_key='', bybit_secret='')
-    asyncio.run(diagnose_binance_ws())
-    № test_binance_websocket(binance_api_key=os.getenv('BINANCE_API_KEY'), binance_secret=os.getenv('BINANCE_SECRET'))
+    # test_binance_websocket(binance_api_key=os.getenv('BINANCE_API_KEY'), binance_secret=os.getenv('BINANCE_SECRET'))
