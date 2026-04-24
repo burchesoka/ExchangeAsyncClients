@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 import aiohttp
 
-from async_binance_websocket import test_binance_websocket
+from async_binance_websocket import AsyncBinanceWebsocket, test_binance_websocket
 from base import MarginMode, PositionData
 import exceptions
 from clients import AsyncBybitFuturesClient, AsyncBinanceFuturesClient, AsyncBingxFuturesClient
@@ -28,6 +28,39 @@ def setup_logging():
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+
+async def diagnose_binance_ws():
+    api_key = os.getenv('BINANCE_API_KEY')
+    api_secret = os.getenv('BINANCE_SECRET')
+    ws = AsyncBinanceWebsocket(api_key=api_key, api_secret=api_secret)
+
+    # 1) Public stream diagnosis (does not depend on API key)
+    ws.create_klines_queues(['BTCUSDT'])
+    public_task = asyncio.create_task(
+        ws.public_ws(['btcusdt@kline_1m'])
+    )
+    try:
+        kline = await asyncio.wait_for(ws.klines_queues['BTCUSDT'].get(), timeout=20)
+        logger.info('PUBLIC OK: got kline BTCUSDT: %s', kline)
+    except asyncio.TimeoutError:
+        logger.error('PUBLIC FAIL: no kline event in 20s')
+    finally:
+        public_task.cancel()
+        await asyncio.gather(public_task, return_exceptions=True)
+
+    # 2) Private stream diagnosis (depends on key permissions)
+    if not api_key:
+        logger.error('PRIVATE FAIL: BINANCE_API_KEY is empty')
+        return
+    headers = {"X-MBX-APIKEY": api_key}
+    async with aiohttp.ClientSession(headers=headers) as session:
+        try:
+            listen_key = await ws._create_listen_key(session)
+            logger.info('PRIVATE OK: listenKey created: %s...', listen_key[:10])
+            await ws._close_listen_key(session, listen_key)
+        except Exception as e:
+            logger.error('PRIVATE FAIL: cannot create listenKey: %s', e)
 
 
 async def test_executions(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient, symbol: str, position: PositionData):
@@ -641,4 +674,5 @@ if __name__ == "__main__":
     ''' pip install python-dotenv '''
     # asyncio.run(main())
     # test_bybit_websocket(bybit_api_key='', bybit_secret='')
-    test_binance_websocket(binance_api_key=os.getenv('BINANCE_API_KEY'), binance_secret=os.getenv('BINANCE_SECRET'))
+    asyncio.run(diagnose_binance_ws())
+    № test_binance_websocket(binance_api_key=os.getenv('BINANCE_API_KEY'), binance_secret=os.getenv('BINANCE_SECRET'))
