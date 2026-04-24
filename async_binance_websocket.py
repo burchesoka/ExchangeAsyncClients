@@ -130,8 +130,7 @@ class AsyncBinanceWebsocket:
                 normalized_topics.append(t.lower())
                 continue
 
-            # Fallback: только символ -> подписываемся на 1m
-            normalized_topics.append(f"{t.lower()}@kline_1m")
+            raise AttributeError(f'No period {klines_topics}')
 
         await ws.send(
             json.dumps(
