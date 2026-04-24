@@ -6,6 +6,7 @@ import time
 
 import aiohttp
 import websockets.asyncio.client
+from urllib.parse import urlencode
 
 from base import OrderData
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 WSS_NAME = "Binance Futures"
-PRIVATE_WSS = "wss://fstream.binance.com/private/ws/{listen_key}"
+PRIVATE_WSS = "wss://fstream.binance.com/private/ws?{query}"
 PUBLIC_WSS = "wss://fstream.binance.com/public"
 MARKET_WSS = "wss://fstream.binance.com/market"
 MARKET_STREAM_WSS = "wss://fstream.binance.com/market/ws/{stream}"
@@ -148,7 +149,16 @@ class AsyncBinanceWebsocket:
                 listen_key = None
                 try:
                     listen_key = await self._create_listen_key(session)
-                    url = PRIVATE_WSS.format(listen_key=listen_key)
+                    events = []
+                    if orders:
+                        events.append("ORDER_TRADE_UPDATE")
+                    if wallet:
+                        events.append("ACCOUNT_UPDATE")
+                    if not events:
+                        raise ValueError("No private events selected")
+
+                    query_pairs = [("listenKey", listen_key)] + [("events", event_name) for event_name in events]
+                    url = PRIVATE_WSS.format(query=urlencode(query_pairs))
                     logger.info("Private WS listenKey created")
 
                     keepalive_task = asyncio.create_task(
@@ -165,12 +175,13 @@ class AsyncBinanceWebsocket:
                                 msg = json.loads(raw_msg)
                                 logger.info("Private WS msg: %s", msg)
 
-                                event_type = msg.get("e")
+                                payload = msg.get("data", msg)
+                                event_type = payload.get("e")
                                 if event_type == "ORDER_TRADE_UPDATE" and orders:
-                                    payload = msg.get("o") or msg
-                                    await self.orders_queue.put([payload] if isinstance(payload, dict) else payload)
+                                    order_payload = payload.get("o") or payload
+                                    await self.orders_queue.put([order_payload] if isinstance(order_payload, dict) else order_payload)
                                 elif event_type == "ACCOUNT_UPDATE" and wallet:
-                                    await self.wallet_queue.put(msg)
+                                    await self.wallet_queue.put(payload)
                                 elif event_type == "listenKeyExpired":
                                     logger.warning("listenKey expired, reconnecting")
                                     break
