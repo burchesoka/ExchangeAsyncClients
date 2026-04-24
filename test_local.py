@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 import aiohttp
 
+from async_binance_websocket import test_binance_websocket
 from base import MarginMode, PositionData
 import exceptions
 from clients import AsyncBybitFuturesClient, AsyncBinanceFuturesClient, AsyncBingxFuturesClient
