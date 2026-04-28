@@ -192,6 +192,8 @@ class BybitAPI(BaseAsyncExchangeAPI):
         if ret_code == 10002 or 'please check your server timestamp or recv_window param' in ret_msg:
             await self.update_recv_window_shift()
             raise exceptions.InvalidNonce
+        elif ret_code == 10016 or 'Internal System Error' in ret_msg:
+            raise exceptions.ServerError
         elif ret_code == 33004 or 'Your api key has expired' in ret_msg:
             raise exceptions.AuthErrorExpiredKeys
         elif ret_code == 110043 or "leverage not modified" in ret_msg:
@@ -204,6 +206,9 @@ class BybitAPI(BaseAsyncExchangeAPI):
         elif ret_code == 110094 or 'Order does not meet minimum order value' in ret_msg:
             logger.critical('Minimum limit. Url: %s \n%s', url, response)
             raise exceptions.MinimumLimitExceeded
+        elif ret_code == 110090 or 'Order placement failed as your position may exceed the max' in ret_msg:
+            logger.critical('Position may exceed the max. Url: %s \n%s', url, response)
+            raise exceptions.MaximumLimitExceeded
         elif ret_code == 110017 or 'cannot fix reduce-only order qty' in ret_msg or 'orderQty will be truncated to zero' in ret_msg:
             logger.info('Reduce-only rule not satisfied. Url: %s \n%s', url, response)
             raise exceptions.ReduceImpossible
