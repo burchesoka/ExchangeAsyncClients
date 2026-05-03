@@ -82,11 +82,13 @@ async def test_executions(client: AsyncBybitFuturesClient | AsyncBinanceFuturesC
         else:
             pos_size += i.exec_qty
 
-        print(i.symbol, datetime.datetime.fromtimestamp(i.time / 1000), i.side, i.exec_qty, 'o:', i.opening_position,
-              'pr:', i.price, 'pos:', pos_size)
+        print(i)
+        # print(i.symbol, datetime.datetime.fromtimestamp(i.time / 1000), i.side, i.exec_qty, 'o:', i.opening_position,
+        #       'pr:', i.price, 'pos:', pos_size)
 
-        if pos_size == 0:
-            break
+        # if pos_size == 0:
+        #     print(x)
+        #     break
 
 
 async def test_dataframe(

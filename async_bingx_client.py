@@ -723,33 +723,41 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
         next_page_cursor = ""
         executions = []
         limit = 100
+        now_ms = int(time.time() * 1000)
+        default_range_ms = 30 * 24 * 60 * 60 * 1000
+
+        def _to_ms(t) -> int | None:
+            if t is None:
+                return None
+            if isinstance(t, datetime.datetime):
+                return int(t.timestamp() * 1000)
+            tf = float(t)
+            return int(tf * 1000) if tf < 1e12 else int(tf)
+
+        start_ms = _to_ms(start_time)
+        end_ms = _to_ms(end_time)
         params: dict = {
             "symbol": _to_bingx_symbol(symbol),
             "limit": limit,
+            # Swap allFillOrders: BingX ждёт startTs/endTs (не startTime/endTime); иначе часто пустой fill_orders.
+            "startTs": start_ms if start_ms is not None else (now_ms - default_range_ms),
+            "endTs": end_ms if end_ms is not None else now_ms,
+            "tradingUnit": "COIN",
         }
-        if start_time is not None:
-            if isinstance(start_time, datetime.datetime):
-                params["startTime"] = int(start_time.timestamp() * 1000)
-            else:
-                params["startTime"] = int(start_time * 1000) if float(start_time) < 1e12 else int(start_time)
-        if end_time is not None:
-            if isinstance(end_time, datetime.datetime):
-                params["endTime"] = int(end_time.timestamp() * 1000)
-            else:
-                params["endTime"] = int(end_time * 1000) if float(end_time) < 1e12 else int(end_time)
 
+        x_coin = {'filledTm': '2026-05-03T19:56:46.000Z', 'volume': '1', 'price': '1.3944', 'amount': '1.3944', 'commission': '-0.000697', 'currency': 'USDT', 'orderId': '2051028207118008320', 'liquidatedPrice': '', 'liquidatedMarginRatio': '', 'filledTime': '2026-05-04T03:56:46.000+08:00', 'clientOrderID': '', 'symbol': 'XRP-USDT', 'onlyOnePosition': False, 'side': 'SELL', 'positionSide': 'LONG', 'type': 'MARKET', 'triggerOrderId': 0}
+        x_cont = {'filledTm': '2026-05-03T19:56:46.000Z', 'volume': '1', 'price': '1.3944', 'amount': '1.3944', 'commission': '-0.000697', 'currency': 'USDT', 'orderId': '2051028207118008320', 'liquidatedPrice': '', 'liquidatedMarginRatio': '', 'filledTime': '2026-05-04T03:56:46.000+08:00', 'clientOrderID': '', 'symbol': 'XRP-USDT', 'onlyOnePosition': False, 'side': 'SELL', 'positionSide': 'LONG', 'type': 'MARKET', 'triggerOrderId': 0}
         while True:
             if next_page_cursor:
                 params["cursor"] = next_page_cursor
             response = await self.get_request("/openApi/swap/v2/trade/allFillOrders", params=params)
-            print('response ', response)
 
             if response.get("retMsg") != "OK" and response.get("retCode") != 0:
                 logger.critical(response)
                 raise Exception("get_executions ERROR")
 
             res = response.get("result") or {}
-            chunk = _bingx_list_from_result(res)
+            chunk = _bingx_list_from_result(res, "fill_orders", "list", "orders")
             chunk = chunk or []
             executions += chunk
 
@@ -761,22 +769,30 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
 
         executions_data = []
         for ex in executions:
-            qty = ex.get("qty") or ex.get("executedQty") or "0"
-            opening_position = Decimal(str(qty)) >= 0
-            ps = (ex.get("positionSide") or "LONG").upper()
-            position_side = "BUY" if ps == "LONG" else "SELL"
+            print('ex ', ex)
+            qty = ex.get("volume")
+            side = ex.get("side")
+            position_side = ex.get("positionSide")
+            if side == "SELL" and position_side == "SHORT":
+                opening_position = True
+            elif side == "BUY" and position_side == "LONG":
+                opening_position = True
+            else:
+                opening_position = False
+
             data = ExecutionsData(
-                symbol=(ex.get("symbol") or "").replace("-", ""),
+                symbol=(ex.get("symbol")).replace("-", ""),
                 opening_position=opening_position,
-                side=ex.get("side", ""),
+                side=side,
                 position_side=position_side,
                 exec_qty=qty,
-                order_id=str(ex.get("orderId", "")),
-                price=ex.get("price") or ex.get("execPrice") or "0",
-                time=ex.get("time") or ex.get("fillTime"),
+                order_id=str(ex.get("orderId")),
+                price=ex.get("price"),
+                time=datetime.datetime.strptime(ex.get("filledTime"), "%Y-%m-%dT%H:%M:%S.%f%z").timestamp() * 1000,
             )
             data.customize()
             executions_data.append(data)
+        executions_data.reverse()
         return executions_data
 
     async def get_open_order(self, symbol: str, order_id: str, retries: int = 70) -> OrderData:
