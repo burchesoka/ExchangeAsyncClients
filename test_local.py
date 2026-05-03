@@ -1,7 +1,7 @@
 import asyncio
 import time
 import datetime
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 import logging
 import os
 
@@ -209,7 +209,7 @@ async def update_position_orders(
     logger.debug('ORDERS UPDATED \n%s\n%s', orders, closing_orders_ids)
 
 
-async def main():
+async def main(bingx: bool = False, bybit: bool = False, binance: bool = False):
     async with aiohttp.ClientSession() as session:
         ''' Bullet '''
         api_key = os.getenv('BYBIT_API_KEY')
@@ -249,24 +249,28 @@ async def main():
             # broker_id=settings.bybit_broker_id,
         )
 
-        x = input('Continue with bingx? Y/N ')
-        if x.lower() == 'y':
-            loops = []
-            for i in range(1):
-                loops.append(asyncio.create_task(test_all(bingx_client, position_mode=PositionMode.hedge)))
-            await asyncio.gather(*loops)
-
-        x = input('Continue with bybit? Y/N ')
-        if x.lower() == 'y':
-            loops = []
-            for i in range(1):
-                loops.append(asyncio.create_task(test_all(bybit_client, position_mode=PositionMode.hedge)))
-            await asyncio.gather(*loops)
-        x = input('Continue with binance? Y/N ')
-        if x.lower() == 'y':
-            loops = []
-            loops.append(asyncio.create_task(test_all(binance_client, position_mode=PositionMode.hedge)))
-            await asyncio.gather(*loops)
+        if bingx:
+            x = input('Continue with bingx? Y/N ')
+            if x.lower() == 'y':
+                loops = []
+                for i in range(1):
+                    loops.append(asyncio.create_task(test_all(bingx_client, position_mode=PositionMode.hedge)))
+                await asyncio.gather(*loops)
+        
+        if bybit:
+            x = input('Continue with bybit? Y/N ')
+            if x.lower() == 'y':
+                loops = []
+                for i in range(1):
+                    loops.append(asyncio.create_task(test_all(bybit_client, position_mode=PositionMode.hedge)))
+                await asyncio.gather(*loops)
+        
+        if binance:
+            x = input('Continue with binance? Y/N ')
+            if x.lower() == 'y':
+                loops = []
+                loops.append(asyncio.create_task(test_all(binance_client, position_mode=PositionMode.hedge)))
+                await asyncio.gather(*loops)
 
 
 async def main_test(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient):
@@ -410,43 +414,69 @@ async def main_test(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient)
     print('check_order ', x)
 
 
-async def test_market_order(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient, symbol: str,
-                            position_mode: PositionMode):
-    y = input('Make MARKET order for %s? Continue? Y/N ' % (symbol))
+async def test_market_order(
+    client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient,
+    position_mode: PositionMode
+    ):
+    if position_mode == PositionMode.hedge:
+        pass
+    else:
+        raise Exception('Position mode is not hedge')
+    
+    symbol = 'XRPUSDT'
+    quantity = '1'
+
+    x = await client.switch_position_mode(symbol=symbol, mode=PositionMode.hedge)
+    print('switch_position_mode ', x)
+
+    y = input('Make BUY MARKET orders for %s with quantity %s? Continue? Y/N ' % (symbol, quantity))
+    if y.lower() == 'y':
+
+        try:
+            long_order_id = await client.new_order(
+                symbol=symbol,
+                quantity=quantity,
+                order_type='MARKET',
+                side='BUY',
+                reduce_only=False,
+                position_mode=position_mode
+            )
+        except Exception as e:
+            print('new_order error ', e)
+            raise e
+
+        x = await client.get_order_history(symbol=symbol, order_id=long_order_id)
+        print('get_order_history ', x)
+        position_data = await client.get_position(
+            symbol=symbol,
+            side='BUY',
+        )
+
+        print('position_data ', position_data)
+        if position_data.size != Decimal(quantity):
+            raise Exception('Position size is not correct')
+
+    '''  SHORT '''
+    instrument_info = await client.get_instrument_info(symbol=symbol)
+    print('instrument_info ', instrument_info)
+    quantity_short = str(Decimal(quantity) * Decimal('2.2').quantize(Decimal(instrument_info.min_order_qty), rounding=ROUND_DOWN))
+    print('new quantity for reverse order', quantity_short)
+
+
+    y = input('Make SELL MARKET orders for %s with quantity %s? Continue? Y/N ' % (symbol, quantity))
     if y.lower() != 'y':
         return
 
-    order_id = await client.new_order(
+    short_order_id = await client.new_order(
         symbol=symbol,
-        quantity='0.025',
-        order_type='MARKET',
-        side='BUY',
-        reduce_only=False,
-        position_mode=position_mode
-    )
-
-    print('order_id ', order_id)
-    x = await client.get_order_history(symbol=symbol, order_id=order_id)
-    print('get_order_history ', x)
-    position_data = await client.get_position(
-        symbol=symbol,
-        side='BUY',
-    )
-
-    print('position_data ', position_data)
-    if position_data.size != Decimal('0.025'):
-        raise Exception('Position size is not correct')
-
-    order_id = await client.new_order(
-        symbol=symbol,
-        quantity='0.03',
+        quantity=quantity_short,
         order_type='MARKET',
         side='SELL',
         reduce_only=False,
         position_mode=position_mode
     )
     print('order_id ', order_id)
-    x = await client.get_order_history(symbol=symbol, order_id=order_id)
+    x = await client.get_order_history(symbol=symbol, order_id=short_order_id)
     print('get_order_history ', x)
     position_data = await client.get_position(
         symbol=symbol,
@@ -455,14 +485,36 @@ async def test_market_order(client: AsyncBybitFuturesClient | AsyncBinanceFuture
     print('position_data ', position_data)
     if position_data.size < Decimal('0'):
         raise Exception('Position size is negative')
-    if position_data.size != Decimal('0.005'):
+    if position_data.size != Decimal(quantity_short):
         raise Exception('Position size is not correct')
 
+    y = input('Close positions? Continue? Y/N ')
+    if y.lower() != 'y':
+        return
+
+    '''  CLOSE '''
     order_id = await client.new_order(
         symbol=symbol,
-        quantity='0.005',
+        quantity=quantity_short,
         order_type='MARKET',
         side='BUY',
+        reduce_only=True,
+        position_mode=position_mode
+    )
+    position_data = await client.get_position(
+        symbol=symbol,
+        side='SELL',
+        empty_available=True
+    )
+    print('position_data SHORT', position_data)
+    if position_data.size != Decimal('0'):
+        raise Exception('Position size is not 0')
+    
+    order_id = await client.new_order(
+        symbol=symbol,
+        quantity=quantity,
+        order_type='MARKET',
+        side='SELL',
         reduce_only=True,
         position_mode=position_mode
     )
@@ -471,7 +523,7 @@ async def test_market_order(client: AsyncBybitFuturesClient | AsyncBinanceFuture
         side='BUY',
         empty_available=True
     )
-    print('position_data', position_data)
+    print('position_data LONG', position_data)
     if position_data.size != Decimal('0'):
         raise Exception('Position size is not 0')
 
@@ -494,9 +546,9 @@ async def test_limit_order(
     print('cancel_cancel_all_orders', x)
     
     ''' Make LIMIT order '''
-    symbol = 'ETHUSDT'
-    price = '1800'
-    quantity = '0.01'
+    symbol = 'XRPUSDT'
+    price = '1.01'
+    quantity = '5'
 
     y = input('Make limit order for %s at %s position_mode: %s? Continue? Y/N ' % (symbol, price, position_mode))
     if y.lower() == 'y':
@@ -563,12 +615,46 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
                    position_mode: PositionMode = PositionMode.hedge):
     wallet = await client.get_wallet_data()
     print('wallet ', wallet)
-    symbol = 'ETHUSDT'
+
+    symbol = 'XRPUSDT'
     # symbol = 'MUSDT'
     leverage = 10
 
-    pos = await client.get_position(symbol, side='BUY')
+    instrument_info = await client.get_all_instruments_info()
+    for i in instrument_info.values():
+        if i.tick_size > Decimal('1'):
+            print('i ', i)
+            raise Exception('Tick size is not valid')
+        if i.symbol == 'YFIUSDT':
+            print('i ', i)
+            if i.tick_size != Decimal('1'):
+                raise Exception('Tick size is not 1')
+        elif i.symbol == 'BTCUSDT':
+            print('i ', i)
+            if i.tick_size != Decimal('0.1'):
+                raise Exception('Tick size is not 0.1')
+    # print('instrument_info ', instrument_info)
+    return
+    instrument_info = await client.get_instrument_info(symbol=symbol)
+    print('instrument_info ', instrument_info)
+
+    instrument_info = await client.get_instrument_info(symbol='ETHUSDT')
+    print('instrument_info ', instrument_info)
+
+    return
+    pos = await client.get_position(symbol=symbol, side='BUY')
     print(pos)
+    if pos is not None:
+        raise Exception('Position is not None for BUY')
+    pos = await client.get_position(symbol=symbol, side='SELL')
+    print(pos)
+    if pos is not None:
+        raise Exception('Position is not None for SELL')
+
+
+
+    await test_market_order(client=client, position_mode=position_mode)
+    return
     await test_limit_order(client, symbol, position_mode)
     return
     await test_executions(client, symbol, pos)
@@ -665,13 +751,12 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
 
         await test_dataframe(client, 'ETHUSDT', '1h', 50, max_limit=10, )
 
-    # await test_market_order(client, symbol, position_mode)
 
     
 
 
 if __name__ == "__main__":
     ''' pip install python-dotenv '''
-    asyncio.run(main())
+    asyncio.run(main(bingx=True, bybit=True, binance=False))
     # test_bybit_websocket(bybit_api_key='', bybit_secret='')
     # test_binance_websocket(binance_api_key=os.getenv('BINANCE_API_KEY'), binance_secret=os.getenv('BINANCE_SECRET'))

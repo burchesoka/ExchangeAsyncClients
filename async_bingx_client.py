@@ -201,7 +201,7 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             broker_id=broker_id,
         )
 
-    async def get_all_instruments_info(self):
+    async def get_all_instruments_info(self):        
         result = await self.public_get_request("/openApi/swap/v2/quote/contracts")
         if result.get("retMsg") != "OK":
             logger.critical("quote/contracts error %s", result)
@@ -218,16 +218,12 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
 
         instruments = {}
         for i in res:
-            sym = i.get("symbol") or i.get("currency")
+            sym = i.get("symbol")
             if not sym:
                 continue
-            min_q = i.get("minQty") or i.get("tradeMinQty") or i.get("size") or "0"
-            tick = i.get("tickSize") or i.get("priceTick") or "0"
-            instruments[sym.replace("-", "")] = InstrumentInfo(
-                symbol=sym.replace("-", ""),
-                min_order_qty=min_q,
-                tick_size=tick,
-            )
+            instrument_info = InstrumentInfo.model_validate(i)
+            instrument_info.customize_bingx()
+            instruments[sym.replace("-", "")] = instrument_info
         return instruments
 
     async def is_master_trader_account(self):
@@ -373,11 +369,18 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
 
     async def get_instrument_info(self, symbol: str) -> InstrumentInfo:
         logger.debug("get_instrument_info: %s", symbol)
-        all_inst = await self.get_all_instruments_info()
-        key = symbol.replace("-", "").upper()
-        if key not in all_inst:
+
+        result = await self.public_get_request("/openApi/swap/v2/quote/contracts", params={"symbol": _to_bingx_symbol(symbol)})
+        print('result ', result)
+        instrument = result.get("result").get("list")[0]
+        if instrument is None:
             raise exceptions.NotFound(symbol)
-        return all_inst[key]
+        elif instrument["symbol"] != _to_bingx_symbol(symbol):
+            raise exceptions.NotFound(symbol)
+
+        instrument_info = InstrumentInfo.model_validate(instrument)
+        instrument_info.customize_bingx()
+        return instrument_info
 
     async def get_klines_history(self, symbol: str, interval: str, candles: int) -> list:
         time_now = time.time()

@@ -97,10 +97,17 @@ class Exchange(str, Enum):
 class InstrumentInfo(BaseModel):
     symbol: str
     min_order_qty: Decimal = Field(
-        validation_alias=AliasChoices('minOrderQty', 'min_order_qty', 'min_qty')
+        validation_alias=AliasChoices('minOrderQty', 'min_order_qty', 'min_qty', 'tradeMinQuantity')
     )
-    tick_size: Decimal = Field(validation_alias=AliasChoices('tickSize', 'tick_size'))
+    tick_size: Decimal = Field(validation_alias=AliasChoices('tickSize', 'tick_size', 'pricePrecision'))
     contract_value: Decimal = Decimal('1')
+    
+    def customize_bingx(self):
+        self.symbol = self.symbol.replace("-", "")
+        if self.tick_size == Decimal("0"):
+            self.tick_size = Decimal('1')
+        else:
+            self.tick_size = Decimal('0.' + '0' * int(self.tick_size - 1) + '1')
 
 
 class WalletData(BaseModel):
