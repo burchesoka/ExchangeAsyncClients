@@ -492,14 +492,19 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             "side": side.upper(),
             "type": order_type.upper().replace(" ", "_"),
             "quantity": str(quantity),
-            "reduceOnly": "true" if reduce_only else "false",
         }
-        if not reduce_only:
-            params.pop("reduceOnly")
+        # BingX swap v2: в Hedge mode поле reduceOnly передавать нельзя (код 109400).
+        if position_mode != PositionMode.hedge and reduce_only:
+            params["reduceOnly"] = "true"
         if price is not None and str(price) not in ("None", "none"):
             params["price"] = str(price)
         if position_mode == PositionMode.hedge:
-            params["positionSide"] = "LONG" if side.upper() == "BUY" else "SHORT"
+            su = side.upper()
+            # Открытие: BUY+LONG / SELL+SHORT. Закрытие (reduce): SELL+LONG / BUY+SHORT.
+            if reduce_only:
+                params["positionSide"] = "LONG" if su == "SELL" else "SHORT"
+            else:
+                params["positionSide"] = "LONG" if su == "BUY" else "SHORT"
 
         match order_type:
             case "STOP" | "STOP_MARKET":
@@ -737,6 +742,7 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             if next_page_cursor:
                 params["cursor"] = next_page_cursor
             response = await self.get_request("/openApi/swap/v2/trade/allFillOrders", params=params)
+            print('response ', response)
 
             if response.get("retMsg") != "OK" and response.get("retCode") != 0:
                 logger.critical(response)

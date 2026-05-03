@@ -524,7 +524,7 @@ async def test_market_order(
     )
     x = await client.get_order_history(symbol=symbol, order_id=order_id)
     print('get_order_history ', x)
-    
+
     position_data = await client.get_position(
         symbol=symbol,
         side='BUY',
@@ -555,7 +555,7 @@ async def test_limit_order(
     ''' Make LIMIT order '''
     symbol = 'XRPUSDT'
     price = '1.01'
-    quantity = '5'
+    quantity = '1'
 
     y = input('Make limit order for %s at %s position_mode: %s? Continue? Y/N ' % (symbol, price, position_mode))
     if y.lower() == 'y':
@@ -656,23 +656,23 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
     # symbol = 'MUSDT'
     leverage = 10
 
-    # await test_instrument_info(client)
+    await test_instrument_info(client)
     
-    # pos = await client.get_position(symbol=symbol, side='BUY')
-    # print(pos)
-    # if pos is not None:
-    #     raise Exception('Position is not None for BUY')
-    # pos = await client.get_position(symbol=symbol, side='SELL')
-    # print(pos)
-    # if pos is not None:
-    #     raise Exception('Position is not None for SELL')
+    pos = await client.get_position(symbol=symbol, side='BUY')
+    print(pos)
+    if pos is not None:
+        raise Exception('Position is not None for BUY')
+    pos = await client.get_position(symbol=symbol, side='SELL')
+    print(pos)
+    if pos is not None:
+        raise Exception('Position is not None for SELL')
 
 
 
-    await test_market_order(client=client, position_mode=position_mode)
-    return
-    await test_limit_order(client, symbol, position_mode)
-    return
+    # await test_market_order(client=client, position_mode=position_mode)
+    # return
+    # await test_limit_order(client, symbol, position_mode)
+    # return
     await test_executions(client, symbol, pos)
 
     y = input('Switch_margin_mode and set_leverage for %s? Y/N ' % (symbol))
@@ -773,6 +773,6 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
 
 if __name__ == "__main__":
     ''' pip install python-dotenv '''
-    asyncio.run(main(bingx=True, bybit=True, binance=True))
+    asyncio.run(main(bingx=True, bybit=False, binance=False))
     # test_bybit_websocket(bybit_api_key='', bybit_secret='')
     # test_binance_websocket(binance_api_key=os.getenv('BINANCE_API_KEY'), binance_secret=os.getenv('BINANCE_SECRET'))
