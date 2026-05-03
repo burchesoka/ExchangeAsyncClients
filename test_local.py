@@ -441,6 +441,7 @@ async def test_market_order(
                 reduce_only=False,
                 position_mode=position_mode
             )
+            print('long_order_id ', long_order_id)
         except Exception as e:
             print('new_order error ', e)
             raise e
@@ -463,7 +464,7 @@ async def test_market_order(
     print('new quantity for reverse order', quantity_short)
 
 
-    y = input('Make SELL MARKET orders for %s with quantity %s? Continue? Y/N ' % (symbol, quantity))
+    y = input('Make SELL MARKET orders for %s with quantity %s? Continue? Y/N ' % (symbol, quantity_short))
     if y.lower() != 'y':
         return
 
@@ -475,7 +476,7 @@ async def test_market_order(
         reduce_only=False,
         position_mode=position_mode
     )
-    print('order_id ', order_id)
+    print('short_order_id ', short_order_id)
     x = await client.get_order_history(symbol=symbol, order_id=short_order_id)
     print('get_order_history ', x)
     position_data = await client.get_position(
@@ -501,13 +502,16 @@ async def test_market_order(
         reduce_only=True,
         position_mode=position_mode
     )
+    x = await client.get_order_history(symbol=symbol, order_id=order_id)
+    print('get_order_history ', x)
+
     position_data = await client.get_position(
         symbol=symbol,
         side='SELL',
         empty_available=True
     )
     print('position_data SHORT', position_data)
-    if position_data.size != Decimal('0'):
+    if position_data and position_data.size != Decimal('0'):
         raise Exception('Position size is not 0')
     
     order_id = await client.new_order(
@@ -518,13 +522,16 @@ async def test_market_order(
         reduce_only=True,
         position_mode=position_mode
     )
+    x = await client.get_order_history(symbol=symbol, order_id=order_id)
+    print('get_order_history ', x)
+    
     position_data = await client.get_position(
         symbol=symbol,
         side='BUY',
         empty_available=True
     )
     print('position_data LONG', position_data)
-    if position_data.size != Decimal('0'):
+    if position_data and position_data.size != Decimal('0'):
         raise Exception('Position size is not 0')
 
 def check_order_data(order_data: OrderData, quantity: str, price: str, order_status: str, side: str):
@@ -611,6 +618,35 @@ async def test_limit_order(
         x = await client.cancel_all_orders()
         print('cancel_cancel_all_orders', x)
 
+async def test_instrument_info(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient):
+    def check_instrument_info(instrument_info):
+        if instrument_info.tick_size > Decimal('1'):
+            print('instrument_info ', instrument_info)
+            raise Exception('Tick size is not valid')
+        if instrument_info.symbol == 'YFIUSDT':
+            print('instrument_info ', instrument_info)
+            if instrument_info.tick_size != Decimal('1'):
+                raise Exception('Tick size is not 1')
+        elif instrument_info.symbol == 'BTCUSDT':
+            print('instrument_info ', instrument_info)
+            if instrument_info.tick_size != Decimal('0.1'):
+                raise Exception('Tick size is not 0.1')
+    instrument_info = await client.get_all_instruments_info()
+    for i in instrument_info.values():
+        check_instrument_info(i)
+
+    instrument_info = await client.get_instrument_info(symbol='YFIUSDT')
+    print('instrument_info ', instrument_info)
+    check_instrument_info(instrument_info)
+
+    instrument_info = await client.get_instrument_info(symbol='ETHUSDT')
+    print('instrument_info ', instrument_info)
+    check_instrument_info(instrument_info)
+
+    instrument_info = await client.get_instrument_info(symbol='BTCUSDT')
+    print('instrument_info ', instrument_info)
+    check_instrument_info(instrument_info)
+
 async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient,
                    position_mode: PositionMode = PositionMode.hedge):
     wallet = await client.get_wallet_data()
@@ -620,36 +656,16 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
     # symbol = 'MUSDT'
     leverage = 10
 
-    instrument_info = await client.get_all_instruments_info()
-    for i in instrument_info.values():
-        if i.tick_size > Decimal('1'):
-            print('i ', i)
-            raise Exception('Tick size is not valid')
-        if i.symbol == 'YFIUSDT':
-            print('i ', i)
-            if i.tick_size != Decimal('1'):
-                raise Exception('Tick size is not 1')
-        elif i.symbol == 'BTCUSDT':
-            print('i ', i)
-            if i.tick_size != Decimal('0.1'):
-                raise Exception('Tick size is not 0.1')
-    # print('instrument_info ', instrument_info)
-    return
-    instrument_info = await client.get_instrument_info(symbol=symbol)
-    print('instrument_info ', instrument_info)
-
-    instrument_info = await client.get_instrument_info(symbol='ETHUSDT')
-    print('instrument_info ', instrument_info)
-
-    return
-    pos = await client.get_position(symbol=symbol, side='BUY')
-    print(pos)
-    if pos is not None:
-        raise Exception('Position is not None for BUY')
-    pos = await client.get_position(symbol=symbol, side='SELL')
-    print(pos)
-    if pos is not None:
-        raise Exception('Position is not None for SELL')
+    # await test_instrument_info(client)
+    
+    # pos = await client.get_position(symbol=symbol, side='BUY')
+    # print(pos)
+    # if pos is not None:
+    #     raise Exception('Position is not None for BUY')
+    # pos = await client.get_position(symbol=symbol, side='SELL')
+    # print(pos)
+    # if pos is not None:
+    #     raise Exception('Position is not None for SELL')
 
 
 
@@ -757,6 +773,6 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
 
 if __name__ == "__main__":
     ''' pip install python-dotenv '''
-    asyncio.run(main(bingx=True, bybit=True, binance=False))
+    asyncio.run(main(bingx=True, bybit=True, binance=True))
     # test_bybit_websocket(bybit_api_key='', bybit_secret='')
     # test_binance_websocket(binance_api_key=os.getenv('BINANCE_API_KEY'), binance_secret=os.getenv('BINANCE_SECRET'))
