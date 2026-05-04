@@ -232,16 +232,29 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
     async def get_api_key_info(self):
         bal = await self.get_request("/openApi/swap/v2/user/balance", params={})
         if bal.get("retMsg") == "OK" and bal.get("result") is not None:
-            return bal.get("result")
-        logger.critical("get_api_key_info error %s", bal)
-        raise Exception(bal)
+            api_key_info = bal.get("result")
+        else:
+            logger.critical("get_api_key_info error %s", bal)
+            raise Exception(bal)
+        try:
+            response = await self.get_request("/openApi/v1/account/apiPermissions", params={})
+            print('response ', response)
+        except Exception as e:
+            print('get_api_key_info error ', e)
+        if response is not None:
+            return response | api_key_info
+
 
     async def get_user_id(self):
         info = await self.get_api_key_info()
         if isinstance(info, dict):
-            b = info.get("balance") if "balance" in info else info
+            # apiPermissions может вернуть id в корне, во вложенном data/result или в legacy balance.
+            direct_uid = info.get("userId") or info.get("uid") or info.get("userID")
+            if direct_uid is not None:
+                return str(direct_uid)
+            b = info.get("balance") if "balance" in info else info.get("data") or info.get("result") or info
             if isinstance(b, dict):
-                return str(b.get("userId") or b.get("uid") or "")
+                return str(b.get("userId") or b.get("uid") or b.get("userID") or "")
         return ""
 
     async def get_wallet_data(

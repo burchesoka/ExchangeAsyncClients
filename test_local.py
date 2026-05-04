@@ -711,6 +711,13 @@ async def test_empty_position(client: AsyncBybitFuturesClient | AsyncBinanceFutu
         else:
             raise e
 
+async def test_get_user_id(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient):
+    u_id = await client.get_user_id()
+    print('get_user_id ', u_id)
+    
+    api_key_info = await client.get_api_key_info()
+    print('get_api_key_info ', api_key_info)
+
 async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient,
                    position_mode: PositionMode = PositionMode.hedge):
     wallet = await client.get_wallet_data()
@@ -735,14 +742,12 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
 
     # await test_margin_mode_and_leverage(client, symbol, leverage, position_mode)
 
+    # await test_get_user_id(client)
 
-    api_key_info = await client.get_api_key_info()
-    print('get_api_key_info ', api_key_info)
-    return
 
     acc_info = await client.get_account_info()
-    acc_info.pop('positions')
-    acc_info.pop('assets')
+    # acc_info.pop('positions')
+    # acc_info.pop('assets')
     print('acc_info ', acc_info)
     return
 

@@ -37,6 +37,7 @@ class BingxAPI(BaseAsyncExchangeAPI):
             "/openApi/swap/v2/server/time": "10",
             "/openApi/swap/v2/quote/contracts": "10",
             "/openApi/swap/v2/quote/klines": "10",
+            "/openApi/v1/account/apiPermissions": "5",
             "/openApi/swap/v2/user/balance": "5",
             "/openApi/swap/v2/user/positions": "5",
             "/openApi/swap/v2/user/income": "5",
@@ -204,6 +205,7 @@ class BingxAPI(BaseAsyncExchangeAPI):
         return code == 0 or code == "0"
 
     async def _handle_error_response(self, response: dict, status_code: int, url: str):
+        logger.debug("BingX API error url=%s response=%s", url, response)
         msg = str(response.get("msg") or response.get("message") or "")
         code = response.get("code")
         if code in (100001, "100001") or "signature" in msg.lower():
