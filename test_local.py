@@ -274,148 +274,6 @@ async def main(bingx: bool = False, bybit: bool = False, binance: bool = False):
                 loops.append(asyncio.create_task(test_all(binance_client, position_mode=PositionMode.hedge)))
                 await asyncio.gather(*loops)
 
-
-async def main_test(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient):
-    wallet = await client.get_wallet_data()
-    print('wallet ', wallet)
-    return
-    x = await client.get_open_orders(symbol='ETHUSDT')
-    print('get_open_orders ', x)
-    order_id = 'a3764a2b-6315-46d0-919a-121f365e230a'
-    try:
-        x = await client.get_open_order(symbol='ETHUSDT', order_id=order_id)
-        print('get_open_order ', x)
-    except exceptions.CancelledOrder:
-        print('CancelledOrder')
-    try:
-        x = await client.get_order_history(symbol='ETHUSDT', order_id=order_id)
-        print('get_order_history ', x)
-    except Exception as e:
-        print('get_order_history error ', e)
-    return
-    start_time = int((time.time() - (60 * 60 * 180)) * 1000)
-    print(start_time)
-    await test_dataframe(client, 'ETHUSDT', '1h', 50)
-    return
-    # order_id = await client.new_order(
-    #         symbol='XRPUSDT',
-    #         quantity='7',
-    #         order_type='MARKET',
-    #         side='SELL',
-    #         reduce_only=False,
-    #         position_mode='hedge'
-    #     )
-    # print(order_id)
-    # pos = await client.get_position(symbol='MUSDT', side='BUY')
-    # print(pos)
-    # await update_position_orders(client, pos, [], 'MUSDT')
-    x = await client.switch_position_mode_for_one_symbol(symbol='ETHUSDT', mode='one_way')
-    print('switch_position_mode_for_one_symbol ', x)
-    # x = await client.switch_position_mode_for_one_symbol(symbol='ETHUSDT', mode='hedge')
-    # print('switch_position_mode_for_one_symbol ', x)
-    return
-    # wallet = await client.get_wallet_data()
-    x = await client.get_account_info()
-    print('get_account_info ', x)
-    x = await client.is_master_trader_account()
-    print('is_master_trader_account ', x)
-    x = await client.get_api_key_info()
-    print('get_api_key_info ', x)
-    x = await client.get_user_id()
-    print('get_user_id ', x)
-    x = await client.get_instrument_info(symbol='ETHUSDT')
-    print('get_instrument_info ', x)
-    return
-    wallet = await client.get_wallet_data()
-    print(wallet)
-    # wallet = await client.get_all_positions()
-    # print(wallet)
-
-    # order_id = await client.new_order(
-    #         symbol='ETHUSDT',
-    #         price='1500',
-    #         quantity='0.04',
-    #         order_type='LIMIT',
-    #         side='BUY',
-    #         reduce_only=False,
-    #         position_mode='hedge'
-    #     )
-    # print(order_id)
-    x = await client.get_open_orders(symbol='ETHUSDT')
-    print('get_open_order ', x)
-    x = await client.get_position(symbol='ETHUSDT', side='BOTH')
-    print('get_position ', x)
-    x = await client.get_position(symbol='ETHUSDT', side='SELL')
-    print('get_position ', x)
-    x = await client.get_instrument_info(symbol='ETHUSDT')
-    print('get_instrument_info ', x)
-    x = await client.get_account_info()
-    print('get_account_info ', x)
-    return
-    # x = await client.get_open_orders()
-    # print('get_open_orders ', x)
-    # x = await client.get_executions(symbol='ETHUSDT')
-    # print('get_executions ', x)
-    # x = await client.get_history_data_frame(symbol='ETHUSDT', interval='1h', candles=1200)
-    start_time = int((time.time() - (60 * 60 * 180)) * 1000)
-    print(start_time)
-
-    # await test_dataframe(client, 'ETHUSDT', '1h', 20, start_time)
-
-    return
-    # x = await client.get_position(symbol='XRPUSDT', side='SELL')
-    # print(x)
-    # x = await client.get_position(symbol='XRPUSDT', side='BOTH')
-    # print(x)
-    return
-    await test_executions(client, 'DOGEUSDT')
-    await test_executions(client, 'XRPUSDT')
-    return
-    wallet = await client.get_wallet_data()
-    print(wallet)
-    wallet = await client.get_wallet_data()
-    print(wallet)
-
-    order_id = await client.new_order(
-        symbol='ETHUSDT',
-        price='1800',
-        quantity='0.03',
-        order_type='LIMIT',
-        side='BUY',
-        reduce_only=False,
-        position_mode='hedge'
-    )
-
-    """ test get_open_orders """
-    x = await client.get_open_orders()
-    print('get_open_orders ', x)
-    x = await client.get_open_orders(coin='USDT')
-    print('client get_open_orders ', x)
-    x = await client.cancel_all_orders()
-    print('cancel_all_orders ', x)
-    await client.cancel_all_orders()
-    return
-
-    order_id = await client.new_order(
-        symbol='XRPUSDT',
-        price='1',
-        quantity='1',
-        order_type='LIMIT',
-        side='BUY',
-        reduce_only=False,
-        position_mode='hedge'
-    )
-    print(order_id)
-    try:
-        x = await client.get_open_order(symbol='XRPUSDT', order_id=order_id)
-        print('get_open_order ', x)
-    except Exception as e:
-        print('get_open_order error ', e)
-
-    x = await client.check_order(symbol='XRPUSDT', order_id=order_id)
-    print('check_order ', x)
-
-
 async def test_market_order(
     client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient,
     position_mode: PositionMode
@@ -467,71 +325,99 @@ async def test_market_order(
 
 
     y = input('Make SELL MARKET orders for %s with quantity %s? Continue? Y/N ' % (symbol, quantity_short))
-    if y.lower() != 'y':
-        return
+    if y.lower() == 'y':
 
-    short_order_id = await client.new_order(
-        symbol=symbol,
-        quantity=quantity_short,
-        order_type='MARKET',
-        side='SELL',
-        reduce_only=False,
-        position_mode=position_mode
-    )
-    print('short_order_id ', short_order_id)
-    x = await client.get_order_history(symbol=symbol, order_id=short_order_id)
-    print('get_order_history ', x)
-    position_data = await client.get_position(
-        symbol=symbol,
-        side='SELL',
-    )
-    print('position_data ', position_data)
-    if position_data.size < Decimal('0'):
-        raise Exception('Position size is negative')
-    if position_data.size != Decimal(quantity_short):
-        raise Exception('Position size is not correct')
+        short_order_id = await client.new_order(
+            symbol=symbol,
+            quantity=quantity_short,
+            order_type='MARKET',
+            side='SELL',
+            reduce_only=False,
+            position_mode=position_mode
+        )
+        print('short_order_id ', short_order_id)
+        x = await client.get_order_history(symbol=symbol, order_id=short_order_id)
+        print('get_order_history ', x)
+        position_data = await client.get_position(
+            symbol=symbol,
+            side='SELL',
+        )
+        print('position_data ', position_data)
+        if position_data.size < Decimal('0'):
+            raise Exception('Position size is negative')
+        if position_data.size != Decimal(quantity_short):
+            raise Exception('Position size is not correct')
 
+    all_positions = await client.get_all_positions()
+    print('all_positions', all_positions)
+
+    # close_all_positions = await client.close_all_positions(symbol=symbol, position_data=position_data)
     y = input('Close positions? Continue? Y/N ')
     if y.lower() != 'y':
         return
 
     '''  CLOSE '''
-    order_id = await client.new_order(
-        symbol=symbol,
-        quantity=quantity_short,
-        order_type='MARKET',
-        side='BUY',
-        reduce_only=True,
-        position_mode=position_mode
-    )
-    x = await client.get_order_history(symbol=symbol, order_id=order_id)
-    print('get_order_history ', x)
+    for _ in range(2):
+        try:
+            order_id = await client.new_order(
+                symbol=symbol,
+                quantity=quantity_short,
+                order_type='MARKET',
+                side='BUY',
+                reduce_only=True,
+                position_mode=position_mode
+            )
+            x = await client.get_order_history(symbol=symbol, order_id=order_id)
+            print('get_order_history ', x)
+        except exceptions.ReduceImpossible:
+            print('ReduceImpossible')
+    
+    
 
-    position_data = await client.get_position(
-        symbol=symbol,
-        side='SELL',
-        empty_available=True
-    )
-    print('position_data SHORT', position_data)
+    try:
+        position_data = await client.get_position(
+            symbol=symbol,
+            side='SELL',
+            empty_available=True
+        )
+        print('position_data SHORT', position_data)
+    except Exception as e:
+        if 'empty_available is not supported for BingX' in str(e) and isinstance(client, AsyncBingxFuturesClient):
+            print('empty_available is not supported for BingX')
+            position_data = None
+        else:
+            raise e
+    
     if position_data and position_data.size != Decimal('0'):
         raise Exception('Position size is not 0')
     
-    order_id = await client.new_order(
-        symbol=symbol,
-        quantity=quantity,
-        order_type='MARKET',
-        side='SELL',
-        reduce_only=True,
-        position_mode=position_mode
-    )
-    x = await client.get_order_history(symbol=symbol, order_id=order_id)
-    print('get_order_history ', x)
+    try:
+        order_id = await client.new_order(
+            symbol=symbol,
+            quantity=quantity,
+            order_type='MARKET',
+            side='SELL',
+            reduce_only=True,
+            position_mode=position_mode
+        )
+        x = await client.get_order_history(symbol=symbol, order_id=order_id)
+        print('get_order_history ', x)
+    except exceptions.ReduceImpossible:
+        print('ReduceImpossible')
 
-    position_data = await client.get_position(
-        symbol=symbol,
-        side='BUY',
-        empty_available=True
-    )
+    try:
+        position_data = await client.get_position(
+            symbol=symbol,
+            side='BUY',
+            empty_available=True
+        )
+    except Exception as e:
+        if 'empty_available is not supported for BingX' in str(e) and isinstance(client, AsyncBingxFuturesClient):
+            print('empty_available is not supported for BingX')
+            position_data = None
+        else:
+            raise e
+    
     print('position_data LONG', position_data)
     if position_data and position_data.size != Decimal('0'):
         raise Exception('Position size is not 0')
@@ -687,6 +573,9 @@ async def test_margin_mode_and_leverage(client: AsyncBybitFuturesClient | AsyncB
             else:
                 raise e
 
+        x = await client.switch_position_mode_for_all_symbols(mode=PositionMode.hedge, coin='USDT')
+        print(f'switch_position_mode_for_all_symbols {PositionMode.hedge}', x)
+
 async def test_empty_position(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient, symbol: str, position_mode: PositionMode):
     pos = await client.get_position(symbol=symbol, side='BUY')
     print(pos)
@@ -718,6 +607,55 @@ async def test_get_user_id(client: AsyncBybitFuturesClient | AsyncBinanceFutures
     api_key_info = await client.get_api_key_info()
     print('get_api_key_info ', api_key_info)
 
+async def test_closed_pnls_list(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient):
+    
+    closed_pnls_list = await client.get_closed_pnls_list(
+        start_time=int(datetime.datetime.strptime('2026-03-24 00:00:00', '%Y-%m-%d %H:%M:%S').timestamp() * 1000),
+        end_time=int(time.time() * 1000),
+        symbol='BTCUSDT'
+    )
+    print('closed_pnls_list BTCUSDT ', closed_pnls_list)
+
+    closed_pnls_list = await client.get_closed_pnls_list(
+        start_time=int(datetime.datetime.strptime('2026-03-24 00:00:00', '%Y-%m-%d %H:%M:%S').timestamp() * 1000),
+        end_time=int(time.time() * 1000)
+    )
+    print('closed_pnls_list %s:' % (symbol))
+    prev_time = None
+    for i in closed_pnls_list:
+        if prev_time is not None:
+            print('i.created_time > prev_time ', i.created_time > prev_time)
+            if i.created_time > prev_time:
+                raise Exception('created_time is not sorted')
+        prev_time = i.created_time
+        print(i)
+        print(datetime.datetime.fromtimestamp(i.created_time / 1000))
+
+
+    closed_pnls_list = await client.get_closed_pnls_list(symbol='DOGEUSDT')
+    print('closed_pnls_list DOGEUSDT:')
+    prev_time = None
+    for i in closed_pnls_list:
+        if prev_time is not None:
+            print('i.created_time > prev_time ', i.created_time > prev_time)
+        prev_time = i.created_time
+        print(i)
+        print(datetime.datetime.fromtimestamp(i.created_time / 1000))
+
+async def test_transfer(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient):
+    try:
+        x = await client.transfer(from_account='CONTRACT', to_account='FUND', amount=Decimal('1'))
+        print('transfer_funds ', x)
+
+        input('Any key to continue')
+        x = await client.transfer(from_account='FUND', to_account='CONTRACT', amount=Decimal('1'))
+        print('transfer_funds ', x)
+    except exceptions.TransferUnable as e:
+        if isinstance(client, AsyncBingxFuturesClient):
+            print('TransferUnable: BingX transfer: use wallet/openApi endpoints separately')
+        else:
+            raise e
+
 async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient,
                    position_mode: PositionMode = PositionMode.hedge):
     wallet = await client.get_wallet_data()
@@ -734,13 +672,26 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
 
     # await test_limit_order(client, symbol, position_mode)
     # return
-
-    # await test_market_order(client=client, position_mode=position_mode)
+    try:
+        is_master_trader_account = await client.is_master_trader_account()
+        print('is_master_trader_account', is_master_trader_account)
+    except Exception as e:
+        if 'is_master_trader_account is not implemented for BingX' in str(e) and isinstance(client, AsyncBingxFuturesClient):
+            print('is_master_trader_account is not implemented for BingX')
+        else:
+            raise e
+    
+    all_positions = await client.get_all_positions()
+    print('all_positions', all_positions)
+    
     # return
+
+    await test_market_order(client=client, position_mode=position_mode)
+    return
 
     # await test_executions(client, symbol, pos)
 
-    # await test_margin_mode_and_leverage(client, symbol, leverage, position_mode)
+    await test_margin_mode_and_leverage(client, symbol, leverage, position_mode)
 
     # await test_get_user_id(client)
 
@@ -749,58 +700,10 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
     # acc_info.pop('positions')
     # acc_info.pop('assets')
     print('acc_info ', acc_info)
-    return
 
-    x = await client.transfer(from_account='CONTRACT', to_account='FUND', amount=Decimal('1'))
-    print('transfer_funds ', x)
-
-    x = await client.transfer(from_account='FUND', to_account='CONTRACT', amount=Decimal('1'))
-    print('transfer_funds ', x)
-
-    return
-
-    closed_pnls_list = await client.get_closed_pnls_list(
-        start_time=int(datetime.datetime.strptime('2026-03-24 00:00:00', '%Y-%m-%d %H:%M:%S').timestamp() * 1000),
-        end_time=int(time.time() * 1000))
-    print('closed_pnls_list %s:' % (symbol))
-    prev_time = None
-    for i in closed_pnls_list:
-        if prev_time is not None:
-            print('i.created_time > prev_time ', i.created_time > prev_time)
-            if i.created_time > prev_time:
-                raise Exception('created_time is not sorted')
-        prev_time = i.created_time
-        print(i)
-        print(datetime.datetime.fromtimestamp(i.created_time / 1000))
-
-    return
-
-    closed_pnls_list = await client.get_closed_pnls_list(symbol='DOGEUSDT')
-    print('closed_pnls_list DOGEUSDT:')
-    prev_time = None
-    for i in closed_pnls_list:
-        if prev_time is not None:
-            print('i.created_time > prev_time ', i.created_time > prev_time)
-        prev_time = i.created_time
-        print(i)
-        print(datetime.datetime.fromtimestamp(i.created_time / 1000))
-
-    position_data_start_buy = await client.get_position(
-        symbol=symbol,
-        side='BUY',
-        empty_available=True
-    )
-    print('position_data_start BUY', position_data_start_buy)
-    if position_data_start_buy.size != Decimal('0'):
-        raise Exception('Position size is not 0')
-    position_data_start_sell = await client.get_position(
-        symbol=symbol,
-        side='SELL',
-        empty_available=True
-    )
-    print('position_data_start SELL', position_data_start_sell)
-    if position_data_start_sell.size != Decimal('0'):
-        raise Exception('Position size is not 0')
+    # await test_transfer(client)
+    
+    # await test_closed_pnls_list(client)
 
     y = input('test_dataframe? Y/N ')
     if y.lower() == 'y':

@@ -217,6 +217,8 @@ class BingxAPI(BaseAsyncExchangeAPI):
             raise exceptions.OrderValidationError
         if code in (100503, "100503") or "too many" in msg.lower() or "rate" in msg.lower():
             raise exceptions.RateLimitExceeded
+        if code in (101205, "101205") or "no position to close" in msg.lower():
+            raise exceptions.ReduceImpossible
         if "not exist" in msg.lower() or "does not exist" in msg.lower():
             raise exceptions.OrderNotExist
         logger.critical("BingX API error url=%s response=%s", url, response)

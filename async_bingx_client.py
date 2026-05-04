@@ -227,7 +227,7 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
         return instruments
 
     async def is_master_trader_account(self):
-        return False
+        raise NotImplementedError('is_master_trader_account is not implemented for BingX')
 
     async def get_api_key_info(self):
         bal = await self.get_request("/openApi/swap/v2/user/balance", params={})
@@ -238,7 +238,7 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             raise Exception(bal)
         try:
             response = await self.get_request("/openApi/v1/account/apiPermissions", params={})
-            print('response ', response)
+            logger.debug('response ', response)
         except Exception as e:
             print('get_api_key_info error ', e)
         if response is not None:
@@ -304,7 +304,8 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             raise exceptions.EmptyWallet(response)
 
     async def get_account_info(self):
-        return await self.get_request("/openApi/swap/v2/user/balance", params={})
+        logger.critical("get_account_info BingX: not implemented")
+        return {}
 
     async def transfer(self, from_account: str, to_account: str, amount: float):
         """
@@ -393,7 +394,6 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
         logger.debug("get_instrument_info: %s", symbol)
 
         result = await self.public_get_request("/openApi/swap/v2/quote/contracts", params={"symbol": _to_bingx_symbol(symbol)})
-        print('result ', result)
         instrument = result.get("result").get("list")[0]
         if instrument is None:
             raise exceptions.NotFound(symbol)
@@ -467,12 +467,9 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
         if end is not None:
             params["endTime"] = end
         klines = await self.public_get_request("/openApi/swap/v2/quote/klines", params=params)
-        raw = klines.get("result")
-        if isinstance(raw, dict) and "list" in raw:
-            return raw.get("list") or []
-        if isinstance(raw, list):
-            return raw
-        return []
+        raw = klines.get("result").get("list")
+        klines_list = [[i.get("time"), i.get("open"), i.get("high"), i.get("low"), i.get("close"), i.get("volume"), 'BINGX'] for i in raw]
+        return klines_list
 
     async def get_history_data_frame(
             self,
@@ -791,7 +788,6 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
 
         executions_data = []
         for ex in executions:
-            print('ex ', ex)
             qty = ex.get("volume")
             side = ex.get("side")
             position_side = ex.get("positionSide")
