@@ -649,6 +649,68 @@ async def test_instrument_info(client: AsyncBybitFuturesClient | AsyncBinanceFut
     print('instrument_info ', instrument_info)
     check_instrument_info(instrument_info)
 
+async def test_margin_mode_and_leverage(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient, symbol: str, leverage: int, position_mode: PositionMode):
+    y = input('Switch_margin_mode and set_leverage for %s? Y/N ' % (symbol))
+    if y.lower() == 'y':
+        x = await client.switch_margin_mode(symbol=symbol, margin_mode=MarginMode.isolated, leverage=leverage)
+        print(f'switch_margin_mode {MarginMode.isolated}', x)
+        input('Any key to continue')
+        x = await client.switch_margin_mode(symbol=symbol, margin_mode=MarginMode.cross, leverage=leverage)
+        print(f'switch_margin_mode {MarginMode.cross}', x)
+        
+        input('Any key to continue')
+        x = await client.switch_position_mode(symbol=symbol, mode=PositionMode.one_way)
+        print(f'switch_position_mode {PositionMode.one_way}', x)
+        input('Any key to continue')
+        x = await client.switch_position_mode(symbol=symbol, mode=position_mode)
+        print(f'switch_position_mode {position_mode}', x)
+        
+        input('Any key to continue')
+        x = await client.set_leverage(symbol=symbol, leverage=1)
+        print(f'set_leverage {1}', x)
+
+        input('Any key to continue')
+        x = await client.set_leverage(symbol=symbol, leverage=leverage)
+        print(f'set_leverage {leverage}', x)
+
+        try:
+            position_data_start = await client.get_position(
+                symbol=symbol,
+                side='BUY',
+                empty_available=True
+            )
+            if position_data_start.leverage != str(leverage):
+                raise Exception('Leverage is not correct')
+        except Exception as e:
+            if 'empty_available is not supported for BingX' in str(e) and isinstance(client, AsyncBingxFuturesClient):
+                print('empty_available is not supported for BingX')
+            else:
+                raise e
+
+async def test_empty_position(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient, symbol: str, position_mode: PositionMode):
+    pos = await client.get_position(symbol=symbol, side='BUY')
+    print(pos)
+    if pos is not None:
+        raise Exception('Position is not None for BUY')
+    pos = await client.get_position(symbol=symbol, side='SELL')
+    print(pos)
+    if pos is not None:
+        raise Exception('Position is not None for SELL')
+    
+    try:
+        position_data_start = await client.get_position(
+            symbol=symbol,
+            side='BUY',
+            empty_available=True
+        )
+        if position_data_start.leverage != str(leverage):
+            raise Exception('Leverage is not correct')
+    except Exception as e:
+        if 'empty_available is not supported for BingX' in str(e) and isinstance(client, AsyncBingxFuturesClient):
+            print('empty_available is not supported for BingX')
+        else:
+            raise e
+
 async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient,
                    position_mode: PositionMode = PositionMode.hedge):
     wallet = await client.get_wallet_data()
@@ -658,51 +720,25 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
     # symbol = 'MUSDT'
     leverage = 10
 
-    await test_instrument_info(client)
+    # await test_instrument_info(client)
     
-    pos = await client.get_position(symbol=symbol, side='BUY')
-    print(pos)
-    if pos is not None:
-        raise Exception('Position is not None for BUY')
-    pos = await client.get_position(symbol=symbol, side='SELL')
-    print(pos)
-    if pos is not None:
-        raise Exception('Position is not None for SELL')
+    # await test_empty_position(client, symbol, position_mode)
 
 
+    # await test_limit_order(client, symbol, position_mode)
+    # return
 
     # await test_market_order(client=client, position_mode=position_mode)
     # return
-    # await test_limit_order(client, symbol, position_mode)
-    # return
-    await test_executions(client, symbol, pos)
 
-    y = input('Switch_margin_mode and set_leverage for %s? Y/N ' % (symbol))
-    if y.lower() == 'y':
-        x = await client.switch_margin_mode(symbol=symbol, margin_mode=MarginMode.cross, leverage=leverage)
-        print('switch_margin_mode ', x)
-        x = await client.switch_position_mode(symbol=symbol, mode=position_mode)
-        print('switch_position_mode ', x)
-        x = await client.set_leverage(symbol=symbol, leverage=10)
-        print('set_leverage ', x)
+    # await test_executions(client, symbol, pos)
 
-        position_data_start = await client.get_position(
-            symbol=symbol,
-            side='BUY',
-            empty_available=True
-        )
-        if position_data_start.leverage != str(leverage):
-            raise Exception('Leverage is not correct')
+    # await test_margin_mode_and_leverage(client, symbol, leverage, position_mode)
 
 
+    api_key_info = await client.get_api_key_info()
+    print('get_api_key_info ', api_key_info)
     return
-
-    # instrument_info = await client.get_instrument_info(symbol=symbol)
-    # print('instrument_info ', instrument_info)
-
-    # api_key_info = await client.get_api_key_info()
-    # print('get_api_key_info ', api_key_info)
-    # return
 
     acc_info = await client.get_account_info()
     acc_info.pop('positions')
@@ -775,6 +811,6 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
 
 if __name__ == "__main__":
     ''' pip install python-dotenv '''
-    asyncio.run(main(bingx=True, bybit=False, binance=False))
+    asyncio.run(main(bingx=True, bybit=True, binance=False))
     # test_bybit_websocket(bybit_api_key='', bybit_secret='')
     # test_binance_websocket(binance_api_key=os.getenv('BINANCE_API_KEY'), binance_secret=os.getenv('BINANCE_SECRET'))

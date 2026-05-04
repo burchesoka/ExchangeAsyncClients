@@ -327,26 +327,35 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             position_mode: PositionMode = PositionMode.hedge,
             retries=20
     ) -> bool:
-        _ = position_mode, retries
-        params = {
-            "symbol": _to_bingx_symbol(symbol),
-            "leverage": leverage,
-        }
-        retries_local = 5
-        while retries_local:
-            try:
-                response = await self.post_request("/openApi/swap/v2/trade/leverage", body=params)
-            except (exceptions.LeverageNotModified, exceptions.NoChange):
-                logger.info("Leverage is %s already", leverage)
-                return True
+        _ = retries
+        symbol_bx = _to_bingx_symbol(symbol)
+        leverage_sides = ["LONG", "SHORT"] if position_mode == PositionMode.hedge else ["LONG"]
 
-            if response.get("retMsg") == "OK" or response.get("retCode") == 0:
-                logger.info("Set leverage %s for %s successful | resp: %s", leverage, symbol, response)
-                return True
-            logger.error("response: %s", response)
-            retries_local -= 1
-            await asyncio.sleep(1)
-        return False
+        for side in leverage_sides:
+            params = {
+                "symbol": symbol_bx,
+                "leverage": leverage,
+                "side": side,
+            }
+            retries_local = 5
+            while retries_local:
+                try:
+                    response = await self.post_request("/openApi/swap/v2/trade/leverage", body=params)
+                except (exceptions.LeverageNotModified, exceptions.NoChange):
+                    logger.info("Leverage is %s already for %s %s", leverage, symbol, side)
+                    break
+
+                if response.get("retMsg") == "OK" or response.get("retCode") == 0:
+                    logger.info("Set leverage %s for %s %s successful | resp: %s", leverage, symbol, side, response)
+                    break
+                logger.error("set_leverage failed for %s %s | response: %s", symbol, side, response)
+                retries_local -= 1
+                await asyncio.sleep(1)
+
+            if retries_local == 0:
+                return False
+
+        return True
 
     async def set_margin_mode_to_account(self, isolated: bool = False):
         logger.info("set_margin_mode_to_account BingX: no global account endpoint, skipped | isolated=%s", isolated)
@@ -877,7 +886,9 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
 
     async def get_position(self, symbol: str, side: str, empty_available: bool = False) -> PositionData | None:
         side_u = side.upper()
-        _ = empty_available
+        if empty_available:
+            raise Exception('empty_available is not supported for BingX')
+
         position_response = await self.get_request(
             "/openApi/swap/v2/user/positions",
             params={"symbol": _to_bingx_symbol(symbol)},
@@ -905,7 +916,7 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             position = dict(zero_position)
             position["positionSide"] = want_ps
 
-        if Decimal(str(position.get("positionAmt") or "0")) == 0 and not empty_available:
+        if Decimal(str(position.get("positionAmt") or "0")) == 0:
             return None
 
         return _bingx_position_to_model(position)
