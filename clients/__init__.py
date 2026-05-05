@@ -15,6 +15,7 @@ from .async_bingx_client import AsyncBingxFuturesClient
 from .async_bybit_websocket import AsyncBybitWebsocket, test_bybit_websocket
 from .async_binance_client import AsyncBinanceFuturesClient
 from .async_binance_websocket import AsyncBinanceWebsocket, test_binance_websocket
+from .async_bingx_websocket import AsyncBingxWebsocket, test_bingx_websocket
 
 __all__ = [
     "BaseAsyncFuturesClient",
@@ -32,4 +33,5 @@ __all__ = [
     "AsyncBybitWebsocket",
     "AsyncBinanceFuturesClient",
     "AsyncBinanceWebsocket",
+    "AsyncBingxWebsocket",
 ]

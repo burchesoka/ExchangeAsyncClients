@@ -30,6 +30,7 @@ py-modules = [
     "async_binance_api",
     "async_binance_websocket",
     "async_binance_client",
+    "async_bingx_websocket",
 ]
 
 [tool.setuptools.packages.find]
