@@ -357,6 +357,7 @@ class AsyncBingxWebsocket:
                                             )
 
                                     async for raw in ws:
+                                        logger.debug("BingX private WS raw: %s", raw)
                                         try:
                                             if isinstance(raw, bytes):
                                                 raw = _maybe_decompress(raw)
@@ -595,8 +596,7 @@ class AsyncBingxWebsocket:
         if test:
             loops.append(self.get_klines_test('BTCUSDT'))
             loops.append(self.get_klines_test('DOGEUSDT'))
-            for symbol in self.orders_filtered_queues:
-                loops.append(self.get_orders_test(symbol))
+            loops.append(self.get_orders_test('XRPUSDT'))
 
         await asyncio.gather(*loops)
 
