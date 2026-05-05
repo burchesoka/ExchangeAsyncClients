@@ -173,6 +173,15 @@ class AsyncBingxWebsocket:
         return payload
 
     @staticmethod
+    def _looks_like_order_payload(payload: dict) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        # На BingX/совместимых event'ах ордера обычно содержат хотя бы id + symbol.
+        has_id = payload.get("i") is not None or payload.get("orderId") is not None
+        has_symbol = payload.get("s") is not None or payload.get("symbol") is not None
+        return has_id and has_symbol
+
+    @staticmethod
     def _normalize_kline(symbol_no_dash: str, raw, interval_hint: str = "") -> dict:
         # BingX может присылать kline как dict, как {"k": {...}} или как list[dict].
         if isinstance(raw, list):
@@ -311,6 +320,42 @@ class AsyncBingxWebsocket:
                             ):
                                 try:
                                     logger.info("BingX private WS connected")
+                                    # На части аккаунтов одних только listenKey событий недостаточно —
+                                    # явно подписываемся на приватные каналы.
+                                    subs: list[str] = []
+                                    if orders:
+                                        subs.extend(
+                                            [
+                                                "ORDER_TRADE_UPDATE",
+                                                "user.order",
+                                                "user.order.update",
+                                                "ORDER",
+                                            ]
+                                        )
+                                    if wallet:
+                                        subs.extend(
+                                            [
+                                                "ACCOUNT_UPDATE",
+                                                "user.account",
+                                                "user.balance",
+                                            ]
+                                        )
+                                    for i, data_type in enumerate(dict.fromkeys(subs)):
+                                        payload = {
+                                            "id": f"bingx_private_sub_{int(time.time() * 1000)}_{i}",
+                                            "reqType": "sub",
+                                            "dataType": data_type,
+                                        }
+                                        try:
+                                            await self._ws_send_json(ws, payload)
+                                            logger.debug("BingX private subscribe sent: %s", payload)
+                                        except Exception as e:
+                                            logger.debug(
+                                                "BingX private subscribe failed for %s: %s",
+                                                data_type,
+                                                e,
+                                            )
+
                                     async for raw in ws:
                                         try:
                                             if isinstance(raw, bytes):
@@ -318,6 +363,12 @@ class AsyncBingxWebsocket:
                                                 text = raw.decode("utf-8", errors="replace")
                                             else:
                                                 text = str(raw)
+
+                                            logger.debug("BingX private WS msg: %s", text)
+                                            # Heartbeat приватного BingX сокета приходит как plain-text "Ping".
+                                            if text.strip().lower() == "ping":
+                                                await ws.send("Pong")
+                                                continue
                                             msg = json.loads(text)
                                         except json.JSONDecodeError:
                                             logger.debug("skip non-json frame %s", raw)
@@ -328,10 +379,41 @@ class AsyncBingxWebsocket:
                                             continue
 
                                         ev = msg.get("e")
-                                        if orders and ev == "ORDER_TRADE_UPDATE":
-                                            o = msg.get("o")
-                                            if isinstance(o, dict):
-                                                await self.orders_queue.put([o])
+                                        if ev == "listenKeyExpired":
+                                            logger.warning(
+                                                "BingX listenKey expired, reconnecting private WS with new listenKey"
+                                            )
+                                            break
+                                        if ev == "SNAPSHOT":
+                                            # Снимки аккаунта очень шумные; они не являются update ордера.
+                                            continue
+
+                                        if orders:
+                                            order_candidates: list[dict] = []
+                                            if ev == "ORDER_TRADE_UPDATE":
+                                                o = msg.get("o")
+                                                if isinstance(o, dict):
+                                                    order_candidates.append(o)
+                                            if isinstance(msg.get("o"), list):
+                                                order_candidates.extend(i for i in msg["o"] if isinstance(i, dict))
+
+                                            # Fallback: payload может приходить как {"dataType":"...ORDER...", "data":{...}}
+                                            data_type = str(msg.get("dataType", ""))
+                                            data = msg.get("data")
+                                            if isinstance(data, dict) and ("ORDER" in data_type.upper() or self._looks_like_order_payload(data)):
+                                                order_candidates.append(data)
+                                            elif isinstance(data, list):
+                                                for item in data:
+                                                    if isinstance(item, dict) and self._looks_like_order_payload(item):
+                                                        order_candidates.append(item)
+
+                                            # Ещё один fallback: само корневое сообщение может быть ордером.
+                                            if self._looks_like_order_payload(msg):
+                                                order_candidates.append(msg)
+
+                                            if order_candidates:
+                                                await self.orders_queue.put(order_candidates)
+                                                logger.info("BingX orders queued: %s", len(order_candidates))
                                         elif wallet and ev == "ACCOUNT_UPDATE":
                                             if msg.get("a") is not None:
                                                 await self.wallet_queue.put(msg)
@@ -353,7 +435,10 @@ class AsyncBingxWebsocket:
                                 await extend_task
                             except asyncio.CancelledError:
                                 pass
-                            await self._listen_key_delete(session, listen_key)
+                            # Важно: не удаляем listenKey на каждом reconnect.
+                            # BingX может вернуть тот же listenKey при быстром пересоздании,
+                            # и delete из старого цикла "убивает" новый private stream.
+                            # Ключ будет обновлен/пересоздан самим циклом при необходимости.
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
@@ -449,6 +534,13 @@ class AsyncBingxWebsocket:
                             normalized = self._normalize_order_payload(order)
                             order_data = OrderData.model_validate(normalized)
                             order_data.customize()
+                            logger.info(
+                                "BingX order parsed id=%s symbol=%s status=%s side=%s",
+                                order_data.order_id,
+                                order_data.symbol,
+                                order_data.order_status,
+                                order_data.side,
+                            )
                         except Exception as e:
                             logger.error("Failed to parse BingX order message: %s | order=%s", e, order)
                             raise e
@@ -462,10 +554,12 @@ class AsyncBingxWebsocket:
                         try:
                             await self.orders_filtered_queues[k].put(v)
                         except KeyError:
-                            logger.critical(
-                                "Order for Symbol (%s) Not In Config came to websocket: \n%s",
+                            # Не теряем ордера по символам, которые не были заранее добавлены в конфиг.
+                            self.orders_filtered_queues[k] = asyncio.Queue()
+                            await self.orders_filtered_queues[k].put(v)
+                            logger.warning(
+                                "Order queue for %s was missing; created dynamically and enqueued update",
                                 k,
-                                v,
                             )
 
                     if len(self.orders_items) > 5:
@@ -492,15 +586,17 @@ class AsyncBingxWebsocket:
         if orders or wallet:
             loops.append(self.private_ws(orders, wallet))
             if triple:
-                loops.append(self.private_ws(orders, wallet))
-                loops.append(self.private_ws(orders, wallet))
+                logger.warning(
+                    "BingX private WS triple mode disabled to avoid listenKeyExpired races"
+                )
         if klines_topics:
             loops.append(self.public_ws(klines_topics))
 
         if test:
             loops.append(self.get_klines_test('BTCUSDT'))
             loops.append(self.get_klines_test('DOGEUSDT'))
-            loops.append(self.get_orders_test())
+            for symbol in self.orders_filtered_queues:
+                loops.append(self.get_orders_test(symbol))
 
         await asyncio.gather(*loops)
 
@@ -513,10 +609,10 @@ class AsyncBingxWebsocket:
                 raise Exception(f"Kline confirmed: {klines}")
             print(f"!!!!!!!!!---- {klines}")
 
-    async def get_orders_test(self):
+    async def get_orders_test(self, symbol: str):
         while True:
-            orders = await self.orders_filtered_queues["XRPUSDT"].get()
-            print(f"@@@@@@@---- {orders}")
+            orders = await self.orders_filtered_queues[symbol].get()
+            print(f"@@@@@@@ {symbol} ---- {orders}")
 
 
 def test_bingx_websocket(bingx_api_key: str, bingx_secret: str):
