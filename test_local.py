@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 import aiohttp
 
 from async_binance_websocket import AsyncBinanceWebsocket, test_binance_websocket
+from async_bingx_websocket import AsyncBingxWebsocket, test_bingx_websocket
+from async_bybit_websocket import AsyncBybitWebsocket, test_bybit_websocket
 from base import MarginMode, PositionData
 import exceptions
 from clients import AsyncBybitFuturesClient, AsyncBinanceFuturesClient, AsyncBingxFuturesClient
@@ -24,6 +26,9 @@ def setup_logging():
         level=logging.DEBUG,
         format='%(asctime)s - %(name)s:%(lineno)s - %(levelname)s - %(message)s',
     )
+    # Отключаем шумный дамп бинарных websocket-фреймов ("DEBUG - < BINARY ...")
+    logging.getLogger("websockets").setLevel(logging.INFO)
+    logging.getLogger("websockets.client").setLevel(logging.INFO)
 
 
 setup_logging()
@@ -719,6 +724,9 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
 
 if __name__ == "__main__":
     ''' pip install python-dotenv '''
-    asyncio.run(main(bingx=True, bybit=True, binance=False))
-    # test_bybit_websocket(bybit_api_key='', bybit_secret='')
+    # asyncio.run(main(bingx=True, bybit=True, binance=False))
+    test_bingx_websocket(bingx_api_key=os.getenv('BINGX_API_KEY'), bingx_secret=os.getenv('BINGX_API_SECRET'))
+    x = {'symbol': 'BTCUSDT', 'interval': '1h', 'start': 1777978800000, 'end': 1777978800000, 'open': '80785.7', 'high': '81044.4', 'low': '80737.2', 'close': '81042.1', 'volume': '492.0611', 'turnover': '0', 'confirm': False, 'timestamp': 1777978800000}
+    y = {'symbol': 'BTCUSDT', 'interval': '60', 'start': 1777978800000, 'end': 1777982399999, 'open': '80791.6', 'high': '81084.6', 'low': '80731.2', 'close': '81000', 'volume': '1694.396', 'turnover': '137072078.2946', 'confirm': False, 'timestamp': 1777981212754}
+    # test_bybit_websocket(bybit_api_key=os.getenv('BYBIT_API_KEY'), bybit_secret=os.getenv('BYBIT_SECRET'))
     # test_binance_websocket(binance_api_key=os.getenv('BINANCE_API_KEY'), binance_secret=os.getenv('BINANCE_SECRET'))

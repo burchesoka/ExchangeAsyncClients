@@ -87,9 +87,15 @@ def _maybe_decompress(raw: bytes | str) -> bytes:
 
 
 def _parse_listen_key_response(data: dict) -> str:
-    """Сырой ответ BingX: {\"code\":0,\"data\":{\"listenKey\":\"...\"}}."""
+    """Поддерживает оба формата:
+    1) {"code":0,"data":{"listenKey":"..."}}
+    2) {"listenKey":"..."}
+    """
     if not isinstance(data, dict):
         raise RuntimeError(f"Unexpected listenKey response: {data!r}")
+    direct_key = data.get("listenKey")
+    if direct_key:
+        return str(direct_key)
     if data.get("code") not in (0, "0"):
         raise RuntimeError(f"listenKey error: {data}")
     inner = data.get("data") or {}
@@ -153,6 +159,11 @@ class AsyncBingxWebsocket:
 
     @staticmethod
     def _normalize_kline(symbol_no_dash: str, raw, interval_hint: str = "") -> dict:
+        # BingX может присылать kline как dict, как {"k": {...}} или как list[dict].
+        if isinstance(raw, list):
+            if not raw:
+                return {}
+            raw = raw[0]
         if not isinstance(raw, dict):
             return {}
         item = raw.get("k") if isinstance(raw.get("k"), dict) else raw
@@ -362,12 +373,22 @@ class AsyncBingxWebsocket:
                     sym_bx = data_type.split("@")[0]
                     interval = data_type.split("@kline_", 1)[-1] if "@kline_" in data_type else ""
                     symbol = sym_bx.replace("-", "")
-                    normalized = self._normalize_kline(symbol=symbol, raw=data, interval_hint=interval)
+                    normalized = self._normalize_kline(
+                        symbol_no_dash=symbol,
+                        raw=data,
+                        interval_hint=interval,
+                    )
                     if not normalized:
                         continue
                     q = self.klines_queues.get(symbol.upper())
                     if q is not None:
                         await q.put(normalized)
+                        logger.info(
+                            "kline queued %s %s close=%s",
+                            normalized.get("symbol"),
+                            normalized.get("interval"),
+                            normalized.get("close"),
+                        )
                     else:
                         logger.debug("no klines queue for %s", symbol)
 
@@ -444,14 +465,19 @@ class AsyncBingxWebsocket:
             loops.append(self.public_ws(klines_topics))
 
         if test:
-            loops.append(self.get_klines_test())
+            loops.append(self.get_klines_test('BTCUSDT'))
+            loops.append(self.get_klines_test('DOGEUSDT'))
             loops.append(self.get_orders_test())
 
         await asyncio.gather(*loops)
 
-    async def get_klines_test(self):
+    async def get_klines_test(self, symbol: str):
         while True:
-            klines = await self.klines_queues["BTCUSDT"].get()
+            klines = await self.klines_queues[symbol].get()
+            if klines['symbol'] != symbol:
+                raise ValueError(f"Symbol mismatch: {klines['symbol']} != {symbol}")
+            if klines['confirm']:
+                raise Exception(f"Kline confirmed: {klines}")
             print(f"!!!!!!!!!---- {klines}")
 
     async def get_orders_test(self):
@@ -462,7 +488,7 @@ class AsyncBingxWebsocket:
 
 def test_bingx_websocket(bingx_api_key: str, bingx_secret: str):
     ws = AsyncBingxWebsocket(api_key=bingx_api_key, api_secret=bingx_secret)
-    ws.create_orders_queues(["XRPUSDT"])
+    ws.create_orders_queues(["XRPUSDT", "DOGEUSDT"])
     ws.create_klines_queues(["BTCUSDT", "DOGEUSDT"])
 
     asyncio.run(
