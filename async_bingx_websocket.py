@@ -106,6 +106,20 @@ def _parse_listen_key_response(data: dict) -> str:
     raise RuntimeError(f"No listenKey in response: {data}")
 
 
+def _as_bool(value, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in ("1", "true", "yes", "y"):
+            return True
+        if normalized in ("0", "false", "no", "n", ""):
+            return False
+    return default
+
+
 class AsyncBingxWebsocket:
     """
     WebSocket BingX USDT-M swap (swap-market), аналог по роли AsyncBybitWebsocket:
@@ -125,6 +139,7 @@ class AsyncBingxWebsocket:
 
         self.orders_items: list[str] = []
         self.orders_filtered_queues: dict[str, asyncio.Queue] = {}
+        self._last_kline_by_topic: dict[tuple[str, str], dict] = {}
 
     @staticmethod
     def _normalize_order_payload(order: dict) -> dict:
@@ -183,7 +198,16 @@ class AsyncBingxWebsocket:
             "close": str(item.get("c", item.get("close", "0"))),
             "volume": str(item.get("v", item.get("volume", "0"))),
             "turnover": str(item.get("q", item.get("turnover", "0"))),
-            "confirm": bool(item.get("x", item.get("confirm", False))),
+            "confirm": _as_bool(
+                item.get(
+                    "x",
+                    item.get(
+                        "confirm",
+                        item.get("X", item.get("isClosed", item.get("closed", False))),
+                    ),
+                ),
+                default=False,
+            ),
             "timestamp": int(raw.get("E", item.get("T", 0)) or 0),
         }
 
@@ -368,7 +392,7 @@ class AsyncBingxWebsocket:
 
                     data_type = msg.get("dataType")
                     data = msg.get("data")
-                    logger.info("BingX public WS msg: %s", msg)
+                    # logger.debug("BingX public WS msg: %s", msg)
                     if not data_type or not isinstance(data_type, str) or "@kline_" not in data_type:
                         continue
                     sym_bx = data_type.split("@")[0]
@@ -383,12 +407,20 @@ class AsyncBingxWebsocket:
                         continue
                     q = self.klines_queues.get(symbol.upper())
                     if q is not None:
+                        topic_key = (normalized["symbol"], normalized["interval"])
+                        prev = self._last_kline_by_topic.get(topic_key)
+                        if prev and prev.get("start") != normalized.get("start"):
+                            prev_closed = dict(prev)
+                            prev_closed["confirm"] = True
+                            await q.put(prev_closed)
+                        self._last_kline_by_topic[topic_key] = dict(normalized)
                         await q.put(normalized)
                         logger.info(
-                            "kline queued %s %s close=%s",
+                            "kline queued %s %s close=%s confirm=%s",
                             normalized.get("symbol"),
                             normalized.get("interval"),
                             normalized.get("close"),
+                            normalized.get("confirm"),
                         )
                     else:
                         logger.debug("no klines queue for %s", symbol)
@@ -496,7 +528,7 @@ def test_bingx_websocket(bingx_api_key: str, bingx_secret: str):
         ws.run_all_ws(
             orders=True,
             wallet=False,
-            klines_topics=["BTCUSDT@kline_1h", "DOGEUSDT@kline_1m"],
+            # klines_topics=["BTCUSDT@kline_1h", "DOGEUSDT@kline_1m"],
             triple=True,
             test=True,
         )
