@@ -296,7 +296,7 @@ class AsyncBingxWebsocket:
                                                 text = str(raw)
                                             msg = json.loads(text)
                                         except json.JSONDecodeError:
-                                            logger.debug("skip non-json frame")
+                                            logger.debug("skip non-json frame %s", raw)
                                             continue
 
                                         if "ping" in msg:
@@ -368,6 +368,7 @@ class AsyncBingxWebsocket:
 
                     data_type = msg.get("dataType")
                     data = msg.get("data")
+                    logger.info("BingX public WS msg: %s", msg)
                     if not data_type or not isinstance(data_type, str) or "@kline_" not in data_type:
                         continue
                     sym_bx = data_type.split("@")[0]

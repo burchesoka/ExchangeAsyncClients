@@ -298,15 +298,20 @@ class AsyncBybitWebsocket:
             loops.append(self.public_ws(klines_topics))
 
         if test:
-            loops.append(self.get_klines_test())
+            loops.append(self.get_klines_test('BTCUSDT'))
+            loops.append(self.get_klines_test('DOGEUSDT'))
             loops.append(self.get_orders_test())
 
         await asyncio.gather(*loops)
 
-    async def get_klines_test(self):
+    async def get_klines_test(self, symbol: str):
         while True:
-            klines = await self.klines_queues['BTCUSDT'].get()
-            print(f'!!!!!!!!!---- {klines}')
+            klines = await self.klines_queues[symbol].get()
+            if klines['symbol'] != symbol:
+                raise ValueError(f"Symbol mismatch: {klines['symbol']} != {symbol}")
+            if klines['confirm']:
+                raise Exception(f"Kline confirmed: {klines}")
+            print(f"!!!!!!!!!---- {klines}")
 
     async def get_orders_test(self):
         while True:
