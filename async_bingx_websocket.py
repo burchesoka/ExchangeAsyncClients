@@ -324,39 +324,40 @@ class AsyncBingxWebsocket:
                                     logger.info("BingX private WS connected")
                                     # На части аккаунтов одних только listenKey событий недостаточно —
                                     # явно подписываемся на приватные каналы.
-                                    subs: list[str] = []
-                                    if orders:
-                                        subs.extend(
-                                            [
-                                                "ORDER_TRADE_UPDATE",
-                                                "user.order",
-                                                "user.order.update",
-                                                "ORDER",
-                                            ]
-                                        )
-                                    if wallet:
-                                        subs.extend(
-                                            [
-                                                "ACCOUNT_UPDATE",
-                                                "user.account",
-                                                "user.balance",
-                                            ]
-                                        )
-                                    for i, data_type in enumerate(dict.fromkeys(subs)):
-                                        payload = {
-                                            "id": f"bingx_private_sub_{int(time.time() * 1000)}_{i}",
-                                            "reqType": "sub",
-                                            "dataType": data_type,
-                                        }
-                                        try:
-                                            await self._ws_send_json(ws, payload)
-                                            logger.debug("BingX private subscribe sent: %s", payload)
-                                        except Exception as e:
-                                            logger.debug(
-                                                "BingX private subscribe failed for %s: %s",
-                                                data_type,
-                                                e,
-                                            )
+                                    # subs: list[str] = []
+                                    # if orders:
+                                        # subs.extend(
+                                        #     [
+                                        #         "ORDER_TRADE_UPDATE",
+                                        #         "user.order",
+                                        #         "user.order.update",
+                                        #         "ORDER",
+                                        #     ]
+                                        # )
+                                    #     pass
+                                    # if wallet:
+                                    #     subs.extend(
+                                    #         [
+                                    #             "ACCOUNT_UPDATE",
+                                    #             "user.account",
+                                    #             "user.balance",
+                                    #         ]
+                                    #     )
+                                    # for i, data_type in enumerate(dict.fromkeys(subs)):
+                                    #     payload = {
+                                    #         "id": f"bingx_private_sub_{int(time.time() * 1000)}_{i}",
+                                    #         "reqType": "sub",
+                                    #         "dataType": data_type,
+                                    #     }
+                                    #     try:
+                                    #         await self._ws_send_json(ws, payload)
+                                    #         logger.debug("BingX private subscribe sent: %s", payload)
+                                    #     except Exception as e:
+                                    #         logger.debug(
+                                    #             "BingX private subscribe failed for %s: %s",
+                                    #             data_type,
+                                    #             e,
+                                    #         )
 
                                     async for raw in ws:
                                         # logger.debug("BingX private WS raw: %s", raw)
@@ -396,6 +397,7 @@ class AsyncBingxWebsocket:
                                                 "BingX listenKey expired, reconnecting private WS with new listenKey"
                                             )
                                             raise Exception("restart private WS")
+                                        
                                         if ev == "SNAPSHOT":
                                             # Снимки аккаунта очень шумные; они не являются update ордера.
                                             continue
