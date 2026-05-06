@@ -216,7 +216,7 @@ async def update_position_orders(
     logger.debug('ORDERS UPDATED \n%s\n%s', orders, closing_orders_ids)
 
 
-async def main(bingx: bool = False, bybit: bool = False, binance: bool = False):
+async def main(bingx: bool = False, bybit: bool = False, binance: bool = False, test_ws: bool = False):
     async with aiohttp.ClientSession() as session:
         ''' Bullet '''
         api_key = os.getenv('BYBIT_API_KEY')
@@ -259,7 +259,9 @@ async def main(bingx: bool = False, bybit: bool = False, binance: bool = False):
         if bingx:
             # x = input('Continue with bingx? Y/N ')
             # if x.lower() == 'y':
-            loops = [asyncio.create_task(test_bingx_websocket(bingx_api_key=os.getenv('BINGX_API_KEY'), bingx_secret=os.getenv('BINGX_API_SECRET')))]
+            loops = []
+            if test_ws:
+                loops = [asyncio.create_task(test_bingx_websocket(bingx_api_key=os.getenv('BINGX_API_KEY'), bingx_secret=os.getenv('BINGX_API_SECRET')))]
             for i in range(1):
                 loops.append(asyncio.create_task(test_all(bingx_client, position_mode=PositionMode.hedge)))
             await asyncio.gather(*loops)
@@ -477,7 +479,12 @@ async def test_limit_order(
             print('OrderNotFound')
         x = await client.cancel_order(symbol=symbol, order_id=order_id)
         print('cancel_order ', x)
-
+        try:
+            x = await client.cancel_order(symbol=symbol, order_id=order_id)
+            print('cancel_order 2nd time ', x)
+        except Exception as e:
+            print('OrderNotFound 2nd time', e)
+        return
         try:
             x = await client.get_open_order(symbol='ETHUSDT', order_id=order_id)
             raise Exception('Order not cancelled')
@@ -661,14 +668,12 @@ async def test_transfer(client: AsyncBybitFuturesClient | AsyncBinanceFuturesCli
         else:
             raise e
 
-async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient,
-                   position_mode: PositionMode = PositionMode.hedge):
+async def test_ws_orders(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient, position_mode: PositionMode):
     symbol = 'XRPUSDT'
     price = '1.01'
     quantity = '3'
     x = await client.switch_position_mode(symbol=symbol, mode=position_mode)
     print('switch_position_mode ', x)
-    
 
     for i in range(20):
         order_id = await client.new_order(
@@ -685,7 +690,13 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
         print('cancel_order ', cancel_order)
         await asyncio.sleep(1)
 
-    return
+async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient,
+                   position_mode: PositionMode = PositionMode.hedge, test_ws_orders: bool = False):
+    if test_ws_orders:
+        await test_ws_orders(client, position_mode)
+        return
+
+
     wallet = await client.get_wallet_data()
     print('wallet ', wallet)
 
@@ -698,8 +709,8 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
     # await test_empty_position(client, symbol, position_mode)
 
 
-    # await test_limit_order(client, symbol, position_mode)
-    # return
+    await test_limit_order(client, symbol, position_mode)
+    return
     try:
         is_master_trader_account = await client.is_master_trader_account()
         print('is_master_trader_account', is_master_trader_account)
@@ -747,8 +758,6 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
 
 if __name__ == "__main__":
     ''' pip install python-dotenv '''
-    asyncio.run(main(bingx=True, bybit=False, binance=False))
-    x = {'symbol': 'BTCUSDT', 'interval': '1h', 'start': 1777978800000, 'end': 1777978800000, 'open': '80785.7', 'high': '81044.4', 'low': '80737.2', 'close': '81042.1', 'volume': '492.0611', 'turnover': '0', 'confirm': False, 'timestamp': 1777978800000}
-    y = {'symbol': 'BTCUSDT', 'interval': '60', 'start': 1777978800000, 'end': 1777982399999, 'open': '80791.6', 'high': '81084.6', 'low': '80731.2', 'close': '81000', 'volume': '1694.396', 'turnover': '137072078.2946', 'confirm': False, 'timestamp': 1777981212754}
+    asyncio.run(main(bingx=True, bybit=False, binance=False, test_ws=False))
     # test_bybit_websocket(bybit_api_key=os.getenv('BYBIT_API_KEY'), bybit_secret=os.getenv('BYBIT_SECRET'))
     # test_binance_websocket(binance_api_key=os.getenv('BINANCE_API_KEY'), binance_secret=os.getenv('BINANCE_SECRET'))

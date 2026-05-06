@@ -189,6 +189,7 @@ class OrderData(BaseModel):
     updated_time: str = Field(validation_alias=AliasChoices("updatedTime", "updateTime", 'T'))
 
     def customize(self):
+        self.side = self.side.upper()
         self.symbol = self.symbol.replace('-', '')
 
         self.order_status = self.order_status.upper()
