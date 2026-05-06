@@ -296,7 +296,7 @@ async def test_market_order(
     x = await client.switch_position_mode(symbol=symbol, mode=PositionMode.hedge)
     print('switch_position_mode ', x)
 
-    y = input('Make BUY MARKET orders for %s with quantity %s? Continue? Y/N ' % (symbol, quantity))
+    y = input('Make BUY MARKET orders for %s with quantity %s (%s)? Continue? Y/N ' % (symbol, quantity, client.__class__.__name__))
     if y.lower() == 'y':
 
         try:
@@ -319,6 +319,15 @@ async def test_market_order(
             symbol=symbol,
             side='BUY',
         )
+
+        try:
+            x = await client.cancel_order(symbol=symbol, order_id=long_order_id)
+            print('cancel_order ', x)
+        except exceptions.AlreadyFilledOrder:
+            print('cancel_order: AlreadyFilledOrder')
+        except Exception as e:
+            print('cancel_order error ', e)
+            raise e
 
         print('position_data ', position_data)
         if position_data.size != Decimal(quantity):
@@ -484,7 +493,7 @@ async def test_limit_order(
             print('cancel_order 2nd time ', x)
         except Exception as e:
             print('OrderNotFound 2nd time', e)
-        return
+
         try:
             x = await client.get_open_order(symbol='ETHUSDT', order_id=order_id)
             raise Exception('Order not cancelled')
@@ -707,9 +716,11 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
     # await test_instrument_info(client)
     
     # await test_empty_position(client, symbol, position_mode)
+    
+    await test_market_order(client=client, position_mode=position_mode)
+    return
 
-
-    await test_limit_order(client, symbol, position_mode)
+    # await test_limit_order(client, symbol, position_mode)
     return
     try:
         is_master_trader_account = await client.is_master_trader_account()
@@ -725,8 +736,7 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
     
     # return
 
-    await test_market_order(client=client, position_mode=position_mode)
-    return
+
 
     # await test_executions(client, symbol, pos)
 
