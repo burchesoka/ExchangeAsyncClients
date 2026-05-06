@@ -29,6 +29,7 @@ class BingxAPI(BaseAsyncExchangeAPI):
         self.broker_id = broker_id
         self.base_url = "https://open-api.bingx.com"
         limiters = {
+            "2": AsyncLimiter(2, 1),
             "10": AsyncLimiter(10, 1),
             "20": AsyncLimiter(20, 1),
             "50": AsyncLimiter(50, 1),
@@ -43,9 +44,11 @@ class BingxAPI(BaseAsyncExchangeAPI):
             "/openApi/swap/v2/user/positions": "5",
             "/openApi/swap/v2/user/income": "5",
             "/openApi/swap/v2/trade/order": "10",
-            "/openApi/swap/v2/trade/openOrders": "10",
-            "/openApi/swap/v2/trade/allOrders": "10",
-            "/openApi/swap/v2/trade/allOpenOrders": "10",
+            # Эти endpoint'ы у BingX чаще всего попадают под временную блокировку code=100410.
+            # Держим более консервативный лимит, чтобы не входить в disable-period.
+            "/openApi/swap/v2/trade/openOrders": "2",
+            "/openApi/swap/v2/trade/allOrders": "2",
+            "/openApi/swap/v2/trade/allOpenOrders": "2",
             "/openApi/swap/v2/trade/leverage": "5",
             "/openApi/swap/v2/trade/marginType": "5",
             "/openApi/swap/v1/positionSide/dual": "5",
