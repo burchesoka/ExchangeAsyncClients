@@ -625,17 +625,17 @@ class AsyncBingxWebsocket:
             print(f"@@@@@@@ {symbol} ---- {orders}")
 
 
-def test_bingx_websocket(bingx_api_key: str, bingx_secret: str):
+async def test_bingx_websocket(bingx_api_key: str, bingx_secret: str):
     ws = AsyncBingxWebsocket(api_key=bingx_api_key, api_secret=bingx_secret)
     ws.create_orders_queues(["XRPUSDT", "DOGEUSDT"])
     ws.create_klines_queues(["BTCUSDT", "DOGEUSDT"])
 
-    asyncio.run(
-        ws.run_all_ws(
+
+    await ws.run_all_ws(
             orders=True,
             wallet=False,
             klines_topics=["BTCUSDT@kline_1h", "DOGEUSDT@kline_1m"],
             triple=True,
             test=True,
         )
-    )
+    
