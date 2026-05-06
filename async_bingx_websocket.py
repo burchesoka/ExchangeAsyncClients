@@ -359,15 +359,16 @@ class AsyncBingxWebsocket:
                                             )
 
                                     async for raw in ws:
-                                        logger.debug("BingX private WS raw: %s", raw)
+                                        # logger.debug("BingX private WS raw: %s", raw)
                                         try:
                                             if isinstance(raw, bytes):
                                                 raw = _maybe_decompress(raw)
                                                 text = raw.decode("utf-8", errors="replace")
                                             else:
                                                 text = str(raw)
-
-                                            logger.debug("BingX private WS msg: %s", text)
+                                            
+                                            if 'SNAPSHOT' not in text:
+                                                logger.debug("BingX private WS msg: %s", text)
                                             # Heartbeat приватного BingX сокета приходит как plain-text "Ping".
                                             if text.strip().lower() == "ping":
                                                 await ws.send("Pong")
