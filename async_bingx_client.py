@@ -875,7 +875,13 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             logger.debug("orders not found")
             return []
 
-        return [_bingx_order_to_model(order) for order in orders_raw_list]
+        symbol_bx = _to_bingx_symbol(symbol)
+        orders_cleared_list = []
+        for order in orders_raw_list:
+            if order['symbol'] == symbol_bx:
+                orders_cleared_list.append(order)
+
+        return [_bingx_order_to_model(order) for order in orders_cleared_list]
 
     async def get_all_positions(self) -> list[PositionData]:
         position_response = await self.get_request("/openApi/swap/v2/user/positions", params={})
