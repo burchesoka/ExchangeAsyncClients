@@ -189,13 +189,14 @@ class BaseAsyncExchangeAPI(ABC):
                         raise
                     await asyncio.sleep(timeout_sleep_seconds)
 
-                except exceptions.RateLimitExceeded:
+                except exceptions.RateLimitExceeded as e:
                     retries -= 1
                     last_error = "RateLimitExceeded"
                     logger.warning("RateLimitExceeded retries=%s url=%s", retries, url)
                     self.update_limits_after_error(endpoint)
                     if not retries:
                         raise
-                    await asyncio.sleep(ratelimit_sleep_seconds)
+                    sleep_seconds = getattr(e, "retry_after_seconds", ratelimit_sleep_seconds)
+                    await asyncio.sleep(sleep_seconds)
 
         raise Exception(f"Request failed: method={method} endpoint={endpoint} error={last_error}")

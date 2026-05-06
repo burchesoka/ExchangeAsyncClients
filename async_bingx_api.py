@@ -3,6 +3,7 @@ import aiohttp
 import hashlib
 import hmac
 import logging
+import re
 import time
 from urllib.parse import urlencode
 
@@ -208,6 +209,26 @@ class BingxAPI(BaseAsyncExchangeAPI):
         logger.debug("BingX API error url=%s response=%s", url, response)
         msg = str(response.get("msg") or response.get("message") or "")
         code = response.get("code")
+        if code in (100410, "100410"):
+            # BingX может временно блокировать endpoint и отдавать timestamp разблокировки.
+            # Пример: "... will be unblocked after 1778064888458".
+            retry_after_seconds = 30
+            match = re.search(r"unblocked after\s+(\d{10,13})", msg.lower())
+            if match:
+                try:
+                    unblock_at_ms = int(match.group(1))
+                    now_ms = int(time.time() * 1000)
+                    retry_after_seconds = max(1, min(300, int((unblock_at_ms - now_ms) / 1000) + 1))
+                except (TypeError, ValueError):
+                    retry_after_seconds = 30
+            error = exceptions.RateLimitExceeded(msg or "BingX temporary frequency block")
+            setattr(error, "retry_after_seconds", retry_after_seconds)
+            logger.warning(
+                "BingX temporary frequency block for endpoint, retry in %ss url=%s",
+                retry_after_seconds,
+                url,
+            )
+            raise error
         if code in (100001, "100001") or "signature" in msg.lower():
             await self.update_recv_window_shift()
             raise exceptions.InvalidNonce
