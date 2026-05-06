@@ -482,8 +482,23 @@ async def test_limit_order(
         print('get_open_order ', x)
         check_order_data(x, quantity, price, 'NEW', 'BUY')
 
-        x = await client.get_open_orders(symbol=symbol)
-        print('get_open_orders ', x)
+        open_orders = await client.get_open_orders(symbol=symbol)
+        print('get_open_orders ', open_orders)
+        symbol_in_open_orders = False
+        for order in open_orders:
+            if order.symbol == symbol:
+                symbol_in_open_orders = True
+            else:
+                raise Exception('Other symbol in open orders')
+        
+        if not symbol_in_open_orders:
+            raise Exception('Symbol not in open orders')
+
+        if not symbol_in_open_orders:
+            raise Exception('Symbol not in open orders')
+        if other_symbol_in_open_orders:
+            raise Exception('Other symbol in open orders')
+
         try:
             x = await client.get_order_history(symbol=symbol, order_id=order_id, retries=1)
             print('get_order_history new?', x)
@@ -724,8 +739,8 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
     # symbol = 'MUSDT'
     leverage = 50.0
 
-    x = await client.get_open_orders(symbol=symbol)
-    print('get_open_orders ', x)
+    await test_limit_order(client, symbol, position_mode)
+
     return
     # x = await client.set_leverage(symbol=symbol, leverage=leverage)
     # print(f'set_leverage {leverage}', x)
@@ -736,7 +751,6 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
     # await test_market_order(client=client, position_mode=position_mode)
     # return
 
-    # await test_limit_order(client, symbol, position_mode)
     
     all_positions = await client.get_all_positions()
     print('all_positions', all_positions)
