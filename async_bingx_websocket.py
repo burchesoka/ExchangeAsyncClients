@@ -23,6 +23,7 @@ MARKET_WSS = "wss://open-api-swap.bingx.com/swap-market"
 ACCOUNT_WSS = "wss://open-api-swap.bingx.com/swap-market"
 
 LISTEN_KEY_CREATE = "/openApi/user/auth/userDataStream"
+LISTEN_KEY_KEEPALIVE_SEC = 30 * 60
 
 # Интервалы как в REST swap v2 (совпадают с async_bingx_client.INTERVAL_FOR_BINGX)
 INTERVAL_FOR_BINGX_WS = {
@@ -255,7 +256,7 @@ class AsyncBingxWebsocket:
     ):
         while not stop.is_set():
             try:
-                await asyncio.wait_for(stop.wait(), timeout=30 * 60)
+                await asyncio.wait_for(stop.wait(), timeout=LISTEN_KEY_KEEPALIVE_SEC)
                 return
             except asyncio.TimeoutError:
                 pass
@@ -313,6 +314,7 @@ class AsyncBingxWebsocket:
                             self._listen_key_extend_loop(session, listen_key, stop_extend)
                         )
                         url = f"{ACCOUNT_WSS}?listenKey={listen_key}"
+                        logger.info("BingX private WS url: %s", url)
                         try:
                             async for ws in websockets.asyncio.client.connect(
                                 url,
@@ -381,10 +383,18 @@ class AsyncBingxWebsocket:
 
                                         ev = msg.get("e")
                                         if ev == "listenKeyExpired":
+                                            expired_key = str(msg.get("listenKey", "") or "")
+                                            if expired_key and expired_key != listen_key:
+                                                logger.warning(
+                                                    "Ignore listenKeyExpired for stale key: %s (active=%s)",
+                                                    expired_key,
+                                                    listen_key,
+                                                )
+                                                continue
                                             logger.warning(
                                                 "BingX listenKey expired, reconnecting private WS with new listenKey"
                                             )
-                                            break
+                                            raise Exception("restart private WS")
                                         if ev == "SNAPSHOT":
                                             # Снимки аккаунта очень шумные; они не являются update ордера.
                                             continue
@@ -605,8 +615,8 @@ class AsyncBingxWebsocket:
             klines = await self.klines_queues[symbol].get()
             if klines['symbol'] != symbol:
                 raise ValueError(f"Symbol mismatch: {klines['symbol']} != {symbol}")
-            if klines['confirm']:
-                raise Exception(f"Kline confirmed: {klines}")
+            # if klines['confirm']:
+            #     raise Exception(f"Kline confirmed: {klines}")
             print(f"!!!!!!!!!---- {klines}")
 
     async def get_orders_test(self, symbol: str):
@@ -624,7 +634,7 @@ def test_bingx_websocket(bingx_api_key: str, bingx_secret: str):
         ws.run_all_ws(
             orders=True,
             wallet=False,
-            # klines_topics=["BTCUSDT@kline_1h", "DOGEUSDT@kline_1m"],
+            klines_topics=["BTCUSDT@kline_1h", "DOGEUSDT@kline_1m"],
             triple=True,
             test=True,
         )
