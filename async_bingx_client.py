@@ -348,7 +348,7 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
         for side in leverage_sides:
             params = {
                 "symbol": symbol_bx,
-                "leverage": leverage,
+                "leverage": int(leverage),
                 "side": side,
             }
             retries_local = 5

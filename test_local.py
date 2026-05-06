@@ -711,8 +711,11 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
 
     symbol = 'XRPUSDT'
     # symbol = 'MUSDT'
-    leverage = 10
+    leverage = 50.0
 
+
+    x = await client.set_leverage(symbol=symbol, leverage=leverage)
+    print(f'set_leverage {leverage}', x)
     # await test_instrument_info(client)
     
     # await test_empty_position(client, symbol, position_mode)
