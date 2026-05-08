@@ -232,7 +232,11 @@ class BingxAPI(BaseAsyncExchangeAPI):
                 url,
             )
             raise error
-        if code in (100001, "100001") or "signature" in msg.lower():
+        if (
+            code in (100001, "100001", 109400, "109400")
+            or "signature" in msg.lower()
+            or "timestamp is invalid" in msg.lower()
+        ):
             await self.update_recv_window_shift()
             raise exceptions.InvalidNonce
         if code in (100202, "100202") or "balance" in msg.lower():
