@@ -249,6 +249,8 @@ class BingxAPI(BaseAsyncExchangeAPI):
             raise exceptions.ReduceImpossible
         if "not exist" in msg.lower() or "does not exist" in msg.lower():
             raise exceptions.OrderNotExist
+        if code in (101400, "101400") and 'the minimum order amount is' in msg.lower():
+            raise exceptions.MinimumOrderQuantity(msg.lower().replace('the minimum order amount is ', '').split()[0])
         logger.critical("BingX API error url=%s response=%s", url, response)
         raise exceptions.RequestError
 

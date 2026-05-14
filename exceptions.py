@@ -54,6 +54,9 @@ class MinimalValueFiveUSDT(Exception):
     """ Got -4164 error code: Order's notional must be no smaller than 5.0 (unless you choose reduce only) """
 
 
+class MinimumOrderQuantity(Exception):
+    """ Minimum order quantity error """
+
 class WrongConfig(Exception):
     """ Unable to parse config """
 

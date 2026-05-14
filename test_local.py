@@ -218,10 +218,11 @@ async def update_position_orders(
 
 async def main(bingx: bool = False, bybit: bool = False, binance: bool = False, test_ws: bool = False):
     async with aiohttp.ClientSession() as session:
+        print('session created')
         ''' Bullet '''
         api_key = os.getenv('BYBIT_API_KEY')
         api_secret = os.getenv('BYBIT_SECRET')
-
+        print('BYBIT_API_KEY set:', bool(api_key), '| BYBIT_SECRET set:', bool(api_secret))
         bybit_client = AsyncBybitFuturesClient(
             session=session,
             api_key=api_key,
@@ -233,6 +234,7 @@ async def main(bingx: bool = False, bybit: bool = False, binance: bool = False, 
         """ BINANCE """
         api_key = os.getenv('BINANCE_API_KEY')
         api_secret = os.getenv('BINANCE_SECRET')
+        print('BINANCE_API_KEY set:', api_key, '| BINANCE_SECRET set:', api_secret)
 
         binance_client = AsyncBinanceFuturesClient(
             session=session,
@@ -257,14 +259,14 @@ async def main(bingx: bool = False, bybit: bool = False, binance: bool = False, 
         )
 
         if bingx:
-            # x = input('Continue with bingx? Y/N ')
-            # if x.lower() == 'y':
-            loops = []
-            if test_ws:
-                loops = [asyncio.create_task(test_bingx_websocket(bingx_api_key=os.getenv('BINGX_API_KEY'), bingx_secret=os.getenv('BINGX_API_SECRET')))]
-            for i in range(1):
-                loops.append(asyncio.create_task(test_all(bingx_client, position_mode=PositionMode.hedge)))
-            await asyncio.gather(*loops)
+            x = input('Continue with bingx? Y/N ')
+            if x.lower() == 'y':
+                loops = []
+                if test_ws:
+                    loops = [asyncio.create_task(test_bingx_websocket(bingx_api_key=os.getenv('BINGX_API_KEY'), bingx_secret=os.getenv('BINGX_API_SECRET')))]
+                for i in range(1):
+                    loops.append(asyncio.create_task(test_all(bingx_client, position_mode=PositionMode.hedge)))
+                await asyncio.gather(*loops)
         
         if bybit:
             x = input('Continue with bybit? Y/N ')
@@ -739,6 +741,36 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
     # symbol = 'MUSDT'
     leverage = 50.0
 
+    print('get_order_history DOGEUSDT 97575966257')
+    x = await client.get_instrument_info(symbol='HYPEUSDT')
+    print(x)
+
+    try:
+        x = await client.new_order(
+            symbol='HYPEUSDT',
+            price='40',
+            quantity='0.0472',
+            order_type='LIMIT',
+            side='BUY',
+            reduce_only=False,
+            position_mode=position_mode
+        )
+    except exceptions.MinimumOrderQuantity as e:
+        print('MinimumOrderQuantity', e)
+        print(str(e))
+
+        return
+        x = await client.new_order(
+            symbol='HYPEUSDT',
+            price='40',
+            quantity=e,
+            order_type='LIMIT',
+            side='BUY',
+            reduce_only=False,
+            position_mode=position_mode
+        )
+    return
+    
     await test_limit_order(client, symbol, position_mode)
 
     return
@@ -802,6 +834,6 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
 
 if __name__ == "__main__":
     ''' pip install python-dotenv '''
-    asyncio.run(main(bingx=True, bybit=False, binance=False, test_ws=False))
+    asyncio.run(main(bingx=True, bybit=False, binance=True, test_ws=False))
     # test_bybit_websocket(bybit_api_key=os.getenv('BYBIT_API_KEY'), bybit_secret=os.getenv('BYBIT_SECRET'))
     # test_binance_websocket(binance_api_key=os.getenv('BINANCE_API_KEY'), binance_secret=os.getenv('BINANCE_SECRET'))
