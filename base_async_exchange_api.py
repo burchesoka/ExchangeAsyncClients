@@ -199,4 +199,11 @@ class BaseAsyncExchangeAPI(ABC):
                     sleep_seconds = getattr(e, "retry_after_seconds", ratelimit_sleep_seconds)
                     await asyncio.sleep(sleep_seconds)
 
+                except exceptions.ServerError:
+                    last_error = "ServerError"
+                    logger.warning("ServerError retries=%s url=%s", retries, url)
+                    if not retries:
+                        raise
+                    await asyncio.sleep(max(network_sleep_seconds, 5))
+
         raise Exception(f"Request failed: method={method} endpoint={endpoint} error={last_error}")
