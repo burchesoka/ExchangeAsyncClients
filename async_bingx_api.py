@@ -239,6 +239,8 @@ class BingxAPI(BaseAsyncExchangeAPI):
         ):
             await self.update_recv_window_shift()
             raise exceptions.InvalidNonce
+        if code in (109500, "109500") or 'quote service unavailable' in msg.lower():
+            raise exceptions.ServerError
         if code in (100202, "100202") or "balance" in msg.lower():
             raise exceptions.MarginInsufficient
         if code in (100400, "100400"):
