@@ -102,21 +102,58 @@ class BingxAPI(BaseAsyncExchangeAPI):
             "result": result,
         }
 
-    async def update_recv_window_shift(self):
+    def _is_invalid_nonce_error(self, code, msg: str) -> bool:
+        msg_l = msg.lower()
+        if code in (100421, "100421", 80014, "80014"):
+            return True
+        if code in (100001, "100001") and (
+            "timestamp" in msg_l or "recvwindow" in msg_l or "recv window" in msg_l
+        ):
+            return True
+        return any(
+            phrase in msg_l
+            for phrase in (
+                "timestamp is invalid",
+                "timestamp for this request",
+                "timestamp is null",
+                "timestamp mismatch",
+                "please check your server timestamp",
+                "recvwindow",
+                "recv window",
+                "outside of the recvwindow",
+            )
+        )
+
+    async def update_recv_window_shift(self, safety_ms: int = 500):
         time_now = int(time.time() * 1000)
-        raw = await self.public_get_request("/openApi/swap/v2/server/time")
+        raw = await self._request(
+            method="GET",
+            endpoint="/openApi/swap/v2/server/time",
+            signed=False,
+            retries=10,
+            network_sleep_seconds=3,
+            timeout_sleep_seconds=1,
+            ratelimit_sleep_seconds=30,
+        )
         if not isinstance(raw, dict):
+            logger.warning("BingX server time: unexpected response %s", raw)
             return
-        data = raw.get("result") or raw.get("data") or raw
+        data = raw.get("data")
         if not isinstance(data, dict):
+            logger.warning("BingX server time: no data in %s", raw)
             return
-        server_time = data.get("serverTime") or data.get("timestamp") or time_now
+        server_time = data.get("serverTime") or data.get("timestamp")
+        if server_time is None:
+            logger.warning("BingX server time: no serverTime in %s", raw)
+            return
         try:
             server_time = int(server_time)
         except (TypeError, ValueError):
-            server_time = time_now
+            logger.warning("BingX server time: invalid serverTime in %s", raw)
+            return
         difference = time_now - server_time
-        self.recv_window_shift = difference - 500
+        logger.debug("difference %s", difference)
+        self.recv_window_shift = difference - safety_ms
         logger.info("recv_window_shift updated: %s", self.recv_window_shift)
 
     async def get_request(self, endpoint: str, params: dict | None = None, retries: int = 70):
@@ -209,9 +246,10 @@ class BingxAPI(BaseAsyncExchangeAPI):
         return code == 0 or code == "0"
 
     async def _handle_error_response(self, response: dict, status_code: int, url: str):
-        logger.debug("BingX API error url=%s response=%s", url, response)
         msg = str(response.get("msg") or response.get("message") or "")
         code = response.get("code")
+        logger.info("BingX API error code: %s msg: %s url=%s", code, msg, url)
+
         if code in (100410, "100410"):
             # BingX может временно блокировать endpoint и отдавать timestamp разблокировки.
             # Пример: "... will be unblocked after 1778064888458".
@@ -232,11 +270,7 @@ class BingxAPI(BaseAsyncExchangeAPI):
                 url,
             )
             raise error
-        if (
-            code in (100001, "100001", 109400, "109400")
-            or "signature" in msg.lower()
-            or "timestamp is invalid" in msg.lower()
-        ):
+        if self._is_invalid_nonce_error(code, msg):
             await self.update_recv_window_shift()
             raise exceptions.InvalidNonce
         if code in (109500, "109500") or 'quote service unavailable' in msg.lower():

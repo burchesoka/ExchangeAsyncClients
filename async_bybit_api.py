@@ -120,13 +120,30 @@ class BybitAPI(BaseAsyncExchangeAPI):
         return headers
 
 
-    async def update_recv_window_shift(self):
+    async def update_recv_window_shift(self, safety_ms: int = 2500):
         time_now = int(time.time() * 1000)
-        server_time = await self.get_request(endpoint="/v5/market/time")
-        server_time = server_time['time']
+        raw = await self._request(
+            method="GET",
+            endpoint="/v5/market/time",
+            signed=False,
+            retries=10,
+            network_sleep_seconds=5,
+            timeout_sleep_seconds=1,
+            ratelimit_sleep_seconds=30,
+        )
+        result = raw.get("result") if isinstance(raw, dict) else None
+        server_time = result.get("time") if isinstance(result, dict) else None
+        if server_time is None:
+            logger.warning("Bybit server time: no time in %s", raw)
+            return
+        try:
+            server_time = int(server_time)
+        except (TypeError, ValueError):
+            logger.warning("Bybit server time: invalid time in %s", raw)
+            return
         difference = time_now - server_time
-        logger.debug('difference %s', difference)
-        self.recv_window_shift = difference - 2500
+        logger.debug("difference %s", difference)
+        self.recv_window_shift = difference - safety_ms
         logger.info("recv_window_shift updated: %s", self.recv_window_shift)
 
     async def get_request(self, endpoint: str, params: dict | None = None, retries: int = 70):
