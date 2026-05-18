@@ -323,7 +323,11 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             raise exceptions.NoNeededPermissions
         if code in (-2019,):
             raise exceptions.MarginInsufficient
-        if code in (-1015, -1003) or "too many requests" in msg.lower():
+        if (
+            code in (-1015, -1003, -1008)
+            or "too many requests" in msg.lower()
+            or "throttled" in msg.lower()
+        ):
             raise exceptions.RateLimitExceeded
         if code in (-2011, -2013):
             raise exceptions.OrderNotExist
