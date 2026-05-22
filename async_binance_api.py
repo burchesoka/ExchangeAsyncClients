@@ -22,7 +22,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         # Смещение времени (мс), добавляется к timestamp при подписи.
         # Логика аналогична BybitAPI.recv_window_shift: мы сознательно уводим timestamp чуть раньше,
         # чтобы уменьшить шанс "timestamp outside of the recvWindow".
-        self.timestamp_shift = 0
+        self.recv_window_shift = 0
         # По документации futures exchangeInfo обычно возвращает REQUEST_WEIGHT=2400/мин.
         self.request_weight_limit_1m = 2400
         self._bucket_order = ["2400", "1800", "1200", "600"]
@@ -76,7 +76,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
 
     def _sign_params(self, params: dict | None = None) -> dict:
         signed = dict(params or {})
-        signed["timestamp"] = int(time.time() * 1000) + int(self.timestamp_shift)
+        signed["timestamp"] = int(time.time() * 1000) + int(self.recv_window_shift)
         signed["recvWindow"] = self.recv_window
 
         query_string = urlencode(signed, doseq=True)
@@ -88,7 +88,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         signed["signature"] = signature
         return signed
 
-    async def update_timestamp_shift(self, safety_ms: int = 2500):
+    async def update_recv_window_shift(self, safety_ms: int = 2500):
         """
         Синхронизирует локальное время с серверным и рассчитывает timestamp_shift (мс).
 
@@ -103,8 +103,8 @@ class BinanceAPI(BaseAsyncExchangeAPI):
 
         difference = local_now_ms - int(server_time_ms)
         # Уводим timestamp раньше на safety_ms, чтобы точка попадала в recvWindow даже при дрейфе.
-        self.timestamp_shift = difference - safety_ms
-        logger.info("timestamp_shift updated: %s", self.timestamp_shift)
+        self.recv_window_shift = difference - safety_ms
+        logger.info("recv_window_shift updated: %s", self.recv_window_shift)
 
     def _auth_headers(self) -> dict:
         return {"X-MBX-APIKEY": self.api_key}
@@ -315,7 +315,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         msg = str(response.get("msg", ""))
         logger.debug("%s %s %s", response, code, url)
         if code in (-1021,) or "timestamp for this request is outside of the recvWindow" in msg:
-            await self.update_timestamp_shift()
+            await self.update_recv_window_shift()
             raise exceptions.InvalidNonce
         if code in (-2015, -2014):
             raise exceptions.AuthenticationError

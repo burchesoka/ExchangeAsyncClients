@@ -166,7 +166,6 @@ class BaseAsyncExchangeAPI(ABC):
                         return response_data
 
                 except aiohttp.client.ClientConnectorError:
-                    retries -= 1
                     last_error = "ClientConnectorError"
                     logger.critical("ClientConnectorError retries=%s url=%s", retries, url)
                     if not retries:
@@ -174,7 +173,6 @@ class BaseAsyncExchangeAPI(ABC):
                     await asyncio.sleep(network_sleep_seconds)
 
                 except asyncio.TimeoutError:
-                    retries -= 1
                     last_error = "TimeoutError"
                     logger.critical("TimeoutError retries=%s url=%s", retries, url)
                     if not retries:
@@ -187,7 +185,7 @@ class BaseAsyncExchangeAPI(ABC):
                     logger.critical("InvalidNonce retries=%s url=%s", retries, url)
                     if not retries:
                         raise
-                    await asyncio.sleep(timeout_sleep_seconds)
+                    await asyncio.sleep(network_sleep_seconds)
 
                 except exceptions.RateLimitExceeded as e:
                     retries -= 1
