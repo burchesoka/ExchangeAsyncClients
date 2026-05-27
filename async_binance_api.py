@@ -101,9 +101,9 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         if server_time_ms is None:
             return
 
-        difference = local_now_ms - int(server_time_ms)
-        # Уводим timestamp раньше на safety_ms, чтобы точка попадала в recvWindow даже при дрейфе.
-        self.recv_window_shift = difference - safety_ms
+        # Целевой timestamp: server_time - safety_ms.
+        # Поэтому shift = (server - local) - safety_ms.
+        self.recv_window_shift = (int(server_time_ms) - local_now_ms) - safety_ms
         logger.info("recv_window_shift updated: %s", self.recv_window_shift)
 
     def _auth_headers(self) -> dict:
@@ -314,7 +314,8 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         code = response.get("code")
         msg = str(response.get("msg", ""))
         logger.debug("%s %s %s", response, code, url)
-        if code in (-1021,) or "timestamp for this request is outside of the recvWindow" in msg:
+        msg_lower = msg.lower()
+        if code in (-1021, -5028) or ("timestamp" in msg_lower and "outside" in msg_lower and "recvwindow" in msg_lower):
             await self.update_recv_window_shift()
             raise exceptions.InvalidNonce
         if code in (-2015, -2014):
@@ -325,8 +326,8 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             raise exceptions.MarginInsufficient
         if (
             code in (-1015, -1003, -1008)
-            or "too many requests" in msg.lower()
-            or "throttled" in msg.lower()
+            or "too many requests" in msg_lower
+            or "throttled" in msg_lower
         ):
             raise exceptions.RateLimitExceeded
         if code in (-2011, -2013):
