@@ -1,6 +1,7 @@
 import logging
 import time
 import asyncio
+import json
 from abc import ABC, abstractmethod
 
 import aiohttp
@@ -161,7 +162,20 @@ class BaseAsyncExchangeAPI(ABC):
                             resp_headers_limit.setdefault("params", params or {})
                             resp_headers_limit.setdefault("request_weight", request_weight)
                         self.update_limits(endpoint, resp_headers_limit)
-                        response_data = await resp.json()
+                        response_text = await resp.text()
+                        response_data: dict
+                        try:
+                            parsed = json.loads(response_text) if response_text else {}
+                            response_data = parsed if isinstance(parsed, dict) else {"data": parsed}
+                        except json.JSONDecodeError:
+                            # Некоторые биржи/CDN на 5xx возвращают HTML/plain text без JSON.
+                            response_data = {
+                                "code": resp.status,
+                                "msg": (
+                                    f"Non-JSON response (content_type={resp.content_type!r}): "
+                                    f"{response_text[:500]}"
+                                ),
+                            }
                         await self._check_response(response_data, resp.status, url)
                         return response_data
 

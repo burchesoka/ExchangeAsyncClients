@@ -204,8 +204,12 @@ class BybitAPI(BaseAsyncExchangeAPI):
             logger.critical('Response error %s %s url: %s', status_code, response, url)
             raise exceptions.AuthenticationError
 
+        if status_code >= 500:
+            logger.warning('Bybit server error %s %s url: %s', status_code, response, url)
+            raise exceptions.ServerError
+
         ret_code = response.get('retCode')
-        ret_msg = response.get('retMsg')
+        ret_msg = str(response.get('retMsg', ''))
         if ret_code == 10002 or 'please check your server timestamp or recv_window param' in ret_msg:
             await self.update_recv_window_shift()
             raise exceptions.InvalidNonce
