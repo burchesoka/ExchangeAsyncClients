@@ -165,8 +165,7 @@ class BaseAsyncExchangeAPI(ABC):
                         response_text = await resp.text()
                         response_data: dict
                         try:
-                            parsed = json.loads(response_text) if response_text else {}
-                            response_data = parsed if isinstance(parsed, dict) else {"data": parsed}
+                            response_data = await resp.json()
                         except json.JSONDecodeError:
                             # Некоторые биржи/CDN на 5xx возвращают HTML/plain text без JSON.
                             response_data = {
