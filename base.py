@@ -197,7 +197,7 @@ class OrderData(BaseModel):
         if self.order_status == 'PENDING':
             self.order_status = 'NEW'
 
-        if 'CANCELLED' in self.order_status:
+        if 'CANCEL' in self.order_status:
             if self.qty > self.cum_exec_qty > Decimal('0'):
                 self.order_status += '_PARTIALLY_FILLED'
 
