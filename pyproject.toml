@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "async-futures-clients"
-version = "1.0.21"
+version = "1.0.22"
 description = "Async futures exchange clients for Bybit and Binance"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "aiohttp",
-    "aiolimiter",
+    "aiohttp==3.8.0",
+    "aiolimiter==1.2.1",
     "numpy<2.4.0",
     "pandas",
     "pydantic>=2",
