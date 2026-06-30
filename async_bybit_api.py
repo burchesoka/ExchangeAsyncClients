@@ -199,7 +199,13 @@ class BybitAPI(BaseAsyncExchangeAPI):
             return True
         return False
 
-    async def _handle_error_response(self, response: dict, status_code: int, url: str):
+    async def _handle_error_response(
+        self,
+        response: dict,
+        status_code: int,
+        url: str,
+        method: str = "",
+    ):
         if status_code == 401:
             logger.critical('Response error %s %s url: %s', status_code, response, url)
             raise exceptions.AuthenticationError

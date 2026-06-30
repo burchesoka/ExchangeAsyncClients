@@ -98,13 +98,19 @@ class BaseAsyncExchangeAPI(ABC):
         """True, если ответ успешен для конкретной биржи."""
 
     @abstractmethod
-    async def _handle_error_response(self, response: dict, status_code: int, url: str):
+    async def _handle_error_response(
+        self,
+        response: dict,
+        status_code: int,
+        url: str,
+        method: str = "",
+    ):
         """Бросает биржеспецифичные исключения для ошибочного ответа."""
 
-    async def _check_response(self, response: dict, status_code: int, url: str):
+    async def _check_response(self, response: dict, status_code: int, url: str, method: str = ""):
         if self._is_success_response(response, status_code):
             return
-        await self._handle_error_response(response, status_code, url)
+        await self._handle_error_response(response, status_code, url, method=method)
         raise exceptions.RequestError
 
     async def _request(
@@ -175,7 +181,7 @@ class BaseAsyncExchangeAPI(ABC):
                                     f"{response_text[:500]}"
                                 ),
                             }
-                        await self._check_response(response_data, resp.status, url)
+                        await self._check_response(response_data, resp.status, url, method=method)
                         return response_data
 
                 except aiohttp.client.ClientConnectorError:

@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -309,12 +310,24 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             )
             self.limiters_dict[endpoint] = target_bucket
 
-    async def _handle_error_response(self, response: dict, status_code: int, url: str):
+    def _is_new_order_request(self, url: str, method: str) -> bool:
+        return method.upper() == "POST" and "/fapi/v1/order" in url
+
+    async def _handle_error_response(
+        self,
+        response: dict,
+        status_code: int,
+        url: str,
+        method: str = "",
+    ):
         # logger.debug("Binance API error. url=%s status=%s response=%s", url, status_code, response)
         code = response.get("code")
         msg = str(response.get("msg", ""))
         logger.debug("%s %s %s", response, code, url)
         msg_lower = msg.lower()
+        if status_code >= 500 or status_code == 408:
+            logger.warning("Binance server error %s %s url=%s", status_code, response, url)
+            raise exceptions.ServerError
         if code in (-1021, -5028) or ("timestamp" in msg_lower and "outside" in msg_lower and "recvwindow" in msg_lower):
             await self.update_recv_window_shift()
             raise exceptions.InvalidNonce
@@ -330,6 +343,17 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             or "throttled" in msg_lower
         ):
             raise exceptions.RateLimitExceeded
+        if code in (-1000, -1001, -1006, -1007):
+            if code in (-1006, -1007) and self._is_new_order_request(url, method):
+                logger.warning(
+                    "Binance ambiguous order execution %s url=%s, sleeping 15s before CheckAgainNeeded",
+                    response,
+                    url,
+                )
+                await asyncio.sleep(15)
+                raise exceptions.CheckAgainNeeded
+            logger.warning("Binance transient backend error %s url=%s", response, url)
+            raise exceptions.ServerError
         if code in (-2011, -2013):
             raise exceptions.OrderNotExist
         if code in (-2022,):

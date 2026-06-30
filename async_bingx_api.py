@@ -245,7 +245,13 @@ class BingxAPI(BaseAsyncExchangeAPI):
         code = response.get("code")
         return code == 0 or code == "0"
 
-    async def _handle_error_response(self, response: dict, status_code: int, url: str):
+    async def _handle_error_response(
+        self,
+        response: dict,
+        status_code: int,
+        url: str,
+        method: str = "",
+    ):
         msg = str(response.get("msg") or response.get("message") or "")
         code = response.get("code")
         logger.info("BingX API error code: %s msg: %s url=%s", code, msg, url)
