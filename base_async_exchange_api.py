@@ -184,7 +184,7 @@ class BaseAsyncExchangeAPI(ABC):
                         await self._check_response(response_data, resp.status, url, method=method)
                         return response_data
 
-                except (aiohttp.client.ClientConnectorError, aiohttp.client_exceptions.ClientConnectionResetError):
+                except aiohttp.client.ClientConnectorError:
                     last_error = "ClientConnectorError"
                     logger.critical("ClientConnectorError retries=%s url=%s", retries, url)
                     if not retries:
