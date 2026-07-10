@@ -184,7 +184,11 @@ class BaseAsyncExchangeAPI(ABC):
                         await self._check_response(response_data, resp.status, url, method=method)
                         return response_data
 
-                except aiohttp.client.ClientConnectorError:
+
+                except (aiohttp.client.ClientConnectorError, aiohttp.client.ClientOSError) as e:
+                    if isinstance(e, aiohttp.client.ClientOSError) and 'Connection reset by peer' not in e.args:
+                        logger.critical('Unexpected error %s', e)
+                        raise e
                     last_error = "ClientConnectorError"
                     logger.critical("ClientConnectorError retries=%s url=%s", retries, url)
                     if not retries:
