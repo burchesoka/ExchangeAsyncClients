@@ -185,21 +185,31 @@ class BaseAsyncExchangeAPI(ABC):
                         return response_data
 
 
-                except (aiohttp.client.ClientConnectorError, aiohttp.client.ClientOSError) as e:
-                    if isinstance(e, aiohttp.client.ClientOSError) and 'Connection reset by peer' not in e.args:
-                        logger.critical('Unexpected error %s', e)
-                        raise e
+                except aiohttp.client.ClientConnectorError as e:
+                    retries -= 1
                     last_error = "ClientConnectorError"
-                    logger.critical("ClientConnectorError retries=%s url=%s", retries, url)
+                    logger.critical("ClientConnectorError retries=%s url=%s err=%s", retries, url, e)
                     if not retries:
-                        raise exceptions.NetworkError
+                        raise exceptions.NetworkError from e
                     await asyncio.sleep(network_sleep_seconds)
 
-                except asyncio.TimeoutError:
+                except aiohttp.client.ClientOSError as e:
+                    if "Connection reset by peer" not in str(e):
+                        logger.critical("Unexpected ClientOSError %s", e)
+                        raise
+                    retries -= 1
+                    last_error = "ClientOSError"
+                    logger.critical("ClientOSError retries=%s url=%s err=%s", retries, url, e)
+                    if not retries:
+                        raise exceptions.NetworkError from e
+                    await asyncio.sleep(network_sleep_seconds)
+
+                except asyncio.TimeoutError as e:
+                    retries -= 1
                     last_error = "TimeoutError"
                     logger.critical("TimeoutError retries=%s url=%s", retries, url)
                     if not retries:
-                        raise exceptions.NetworkError
+                        raise exceptions.NetworkError from e
                     await asyncio.sleep(timeout_sleep_seconds)
 
                 except exceptions.InvalidNonce:
@@ -221,6 +231,7 @@ class BaseAsyncExchangeAPI(ABC):
                     await asyncio.sleep(sleep_seconds)
 
                 except exceptions.ServerError:
+                    retries -= 1
                     last_error = "ServerError"
                     logger.warning("ServerError retries=%s url=%s", retries, url)
                     if not retries:
