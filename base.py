@@ -447,3 +447,46 @@ class BaseAsyncFuturesClient(ABC):
         end_time: int = None,
     ) -> SavePnlsAndGetFeeResponse:
         raise NotImplementedError
+
+
+LIBRARY_LOGGER_NAMES = (
+    "async_bybit_client",
+    "async_bybit_api",
+    "async_bybit_websocket",
+    "async_binance_client",
+    "async_binance_api",
+    "async_binance_websocket",
+    "async_bingx_client",
+    "async_bingx_api",
+    "async_bingx_websocket",
+    "base",
+    "base_async_exchange_api",
+)
+
+DEFAULT_LOG_FORMAT = "%(asctime)s - %(name)s:%(lineno)s - %(levelname)s - %(message)s"
+
+
+def setup_clients_logging(
+    level: int = logging.INFO,
+    *,
+    log_format: str = DEFAULT_LOG_FORMAT,
+    quiet_websockets: bool = True,
+    websockets_level: int = logging.INFO,
+) -> None:
+    """Configure logging for async-futures-clients library messages.
+
+    Call once at application startup before using exchange clients.
+    If the root logger is not configured yet, ``basicConfig`` is applied.
+    Otherwise only library logger levels are updated, without changing
+    the host application's logging setup.
+    """
+    root = logging.getLogger()
+    if not root.handlers:
+        logging.basicConfig(level=level, format=log_format)
+    else:
+        for name in LIBRARY_LOGGER_NAMES:
+            logging.getLogger(name).setLevel(level)
+
+    if quiet_websockets:
+        logging.getLogger("websockets").setLevel(websockets_level)
+        logging.getLogger("websockets.client").setLevel(websockets_level)
