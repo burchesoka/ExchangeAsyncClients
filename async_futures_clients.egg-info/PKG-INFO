@@ -1,23 +1,39 @@
 Metadata-Version: 2.4
 Name: async-futures-clients
-Version: 0.1.1
+Version: 1.0.28
 Summary: Async futures exchange clients for Bybit and Binance
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
-Requires-Dist: aiohttp
-Requires-Dist: aiolimiter
+Requires-Dist: aiohttp==3.8.6
+Requires-Dist: aiolimiter==1.2.1
+Requires-Dist: numpy<2.4.0
 Requires-Dist: pandas
 Requires-Dist: pydantic>=2
+Requires-Dist: websockets==16.0
 
 # Async Futures Clients
 
-Python modules for working with futures APIs of Bybit and Binance.
+Python modules for working with futures APIs of Bybit, BingX and Binance.
 
 ## Installation from GitHub
 
 ```bash
 pip install git+https://github.com/burchesoka/ExchangeAsyncClients.git
 ```
+
+## Logging
+
+By default the library does not configure Python logging. Call `setup_logging()` once at startup:
+
+```python
+import logging
+
+from clients import setup_clients_logging
+
+setup_clients_logging(level=logging.INFO)  # use logging.DEBUG for verbose output
+```
+
+If your application already configures logging, `setup_logging()` only adjusts library logger levels without changing your handlers or format.
 
 ## Usage
 
