@@ -16,6 +16,7 @@ from .async_bybit_websocket import AsyncBybitWebsocket, test_bybit_websocket
 from .async_binance_client import AsyncBinanceFuturesClient
 from .async_binance_websocket import AsyncBinanceWebsocket, test_binance_websocket
 from .async_bingx_websocket import AsyncBingxWebsocket, test_bingx_websocket
+from .logging_config import setup_clients_logging
 
 __all__ = [
     "BaseAsyncFuturesClient",
@@ -34,4 +35,5 @@ __all__ = [
     "AsyncBinanceFuturesClient",
     "AsyncBinanceWebsocket",
     "AsyncBingxWebsocket",
+    "setup_clients_logging",
 ]

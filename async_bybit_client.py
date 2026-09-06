@@ -392,7 +392,7 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             quantity: str,
             order_type: str,
             side: str,
-            price: float | None = None,
+            price: str | None = None,
             stop_price: float | None = None,
             take_price: float | None = None,
             reduce_only: bool = False,

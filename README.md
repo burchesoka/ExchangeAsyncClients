@@ -8,6 +8,20 @@ Python modules for working with futures APIs of Bybit, BingX and Binance.
 pip install git+https://github.com/burchesoka/ExchangeAsyncClients.git
 ```
 
+## Logging
+
+By default the library does not configure Python logging. Call `setup_logging()` once at startup:
+
+```python
+import logging
+
+from clients import setup_clients_logging
+
+setup_clients_logging(level=logging.INFO)  # use logging.DEBUG for verbose output
+```
+
+If your application already configures logging, `setup_logging()` only adjusts library logger levels without changing your handlers or format.
+
 ## Usage
 
 ```python

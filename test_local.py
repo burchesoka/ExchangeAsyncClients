@@ -14,24 +14,14 @@ from async_bingx_websocket import AsyncBingxWebsocket, test_bingx_websocket
 from async_bybit_websocket import AsyncBybitWebsocket, test_bybit_websocket
 from base import MarginMode, PositionData
 import exceptions
-from clients import AsyncBybitFuturesClient, AsyncBinanceFuturesClient, AsyncBingxFuturesClient
+from clients import AsyncBybitFuturesClient, AsyncBinanceFuturesClient, AsyncBingxFuturesClient, setup_clients_logging
 from clients.base import INTERVAL_IN_SEC, PositionMode, OrderData
 
 
 load_dotenv()
 
 
-def setup_logging():
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s - %(name)s:%(lineno)s - %(levelname)s - %(message)s',
-    )
-    # Отключаем шумный дамп бинарных websocket-фреймов ("DEBUG - < BINARY ...")
-    logging.getLogger("websockets").setLevel(logging.INFO)
-    logging.getLogger("websockets.client").setLevel(logging.INFO)
-
-
-setup_logging()
+setup_clients_logging(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
