@@ -116,6 +116,8 @@ class WalletData(BaseModel):
         validation_alias=AliasChoices('totalAvailableBalance', 'availableMargin', 'available_balance')
     )
     equity: Decimal
+    coins: dict[str, Decimal] = Field(validation_alias=AliasChoices('coins'))
+
 
 
 class ExecutionsData(BaseModel):
@@ -149,15 +151,15 @@ class PositionData(BaseModel):
     symbol: str
     side: str = Field(validation_alias=AliasChoices("side", 'positionSide'))
     size: Decimal = Field(validation_alias=AliasChoices("size", 'positionAmt'))
-    avg_price: Decimal = Field(alias='avgPrice')
-    stop_price: Decimal = Field(validation_alias=AliasChoices('stopLoss'))
-    take_price: Decimal = Field(validation_alias=AliasChoices('takeProfit'))
-    liq_price: Decimal = Field(validation_alias=AliasChoices("liqPrice", "liquidationPrice"))
-    position_margin: str = Field(validation_alias=AliasChoices("positionBalance", "margin"))
+    avg_price: Decimal = Field(validation_alias=AliasChoices("avgPrice", 'avg_price'))
+    stop_price: Decimal = Field(validation_alias=AliasChoices("stopLoss", 'stop_price'))
+    take_price: Decimal = Field(validation_alias=AliasChoices('takeProfit', 'take_price'))
+    liq_price: Decimal = Field(validation_alias=AliasChoices("liqPrice", "liquidationPrice", 'liq_price'))
+    position_margin: str = Field(validation_alias=AliasChoices("positionBalance", "margin", 'position_margin'))
     leverage: str
-    created_time: datetime.datetime = Field(alias='createdTime')
-    updated_time: datetime.datetime = Field(validation_alias=AliasChoices('updatedTime', 'updateTime'))
-    unrealised_pnl: Decimal = Field(validation_alias=AliasChoices('unrealisedPnl', 'unrealizedProfit'))
+    created_time: datetime.datetime = Field(validation_alias=AliasChoices('createdTime', 'created_time'))
+    updated_time: datetime.datetime = Field(validation_alias=AliasChoices('updatedTime', 'updateTime', 'updated_time'))
+    unrealised_pnl: Decimal = Field(validation_alias=AliasChoices('unrealisedPnl', 'unrealizedProfit', 'unrealised_pnl'))
 
     def customize(self):
         self.symbol = self.symbol.replace('-', '')

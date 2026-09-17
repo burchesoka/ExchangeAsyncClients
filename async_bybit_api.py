@@ -55,6 +55,13 @@ class BybitAPI(BaseAsyncExchangeAPI):
             "/v5/account/info": "50",
             "/v5/account/set-margin-mode": "5",
             "/v5/account/wallet-balance": "50",
+            "/v5/asset/transfer/query-account-coins-balance": "50",
+            "/v5/earn/product": "50",
+            "/v5/earn/place-order": "10",
+            "/v5/earn/order": "50",
+            "/v5/earn/position": "50",
+            "/v5/earn/yield": "50",
+            "/v5/earn/hourly-yield": "50",
         }
         super().__init__(
             session=session,
@@ -230,7 +237,8 @@ class BybitAPI(BaseAsyncExchangeAPI):
         elif ret_code == 110007 or "CheckMarginRatio fail" in ret_msg:
             logger.warning('Insufficient available balance. Url: %s', url)
             raise exceptions.MarginInsufficient
-        elif ret_code == 110094 or 'Order does not meet minimum order value' in ret_msg:
+        elif ret_code == 110094 or 'Order does not meet minimum order value' in ret_msg or \
+                ret_code == 170140 or 'Order value exceeded lower limit' in ret_msg:
             logger.critical('Minimum limit. Url: %s \n%s', url, response)
             raise exceptions.MinimumLimitExceeded
         elif ret_code == 110090 or 'Order placement failed as your position may exceed the max' in ret_msg:
@@ -246,6 +254,8 @@ class BybitAPI(BaseAsyncExchangeAPI):
             raise exceptions.OrderNotExist
         elif ret_code == 10006 or 'Too many visits. Exceeded the API Rate Limit' in ret_msg:
             raise exceptions.RateLimitExceeded
+        elif ret_code == 170131 or 'Insufficient balance' in ret_msg:
+            raise exceptions.InsufficientBalance
         else:
             logger.critical('Unknown error %s\n%s',url, response)
             raise exceptions.RequestError

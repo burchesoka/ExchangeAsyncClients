@@ -118,10 +118,14 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             if response.get('retMsg') == 'OK':
                 try:
                     wallet_balance_data_in_usdt = None
+                    coins = {}
                     wallet_balance_data = response.get('result').get('list')[0]
                     for coin_data in wallet_balance_data['coin']:
                         if coin_data.get('coin').upper() == 'USDT':
                             wallet_balance_data_in_usdt = coin_data
+                        if coin_data['walletBalance']:
+                            coins[coin_data['coin']] = coin_data['walletBalance']
+                            logger.info(coin_data)
 
                     if wallet_balance_data_in_usdt is None:
                         if logs_enabled:
@@ -146,7 +150,8 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
                     #     wallet_balance_data_in_usdt['availableToWithdraw'] = Decimal(wallet_balance_data_in_usdt['walletBalance']) - \
                     #                                                          Decimal(wallet_balance_data_in_usdt['totalPositionIM']) + \
                     #                                                          Decimal(wallet_balance_data_in_usdt['unrealisedPnl'])
-
+                    wallet_balance_data['coins'] = coins
+                    logger.info(wallet_balance_data)
                     return WalletData.model_validate(wallet_balance_data)
                 except Exception as e:
                     if logs_enabled:
@@ -779,27 +784,70 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
         return orders
 
     async def get_all_positions(self) -> list[PositionData]:
-        params = {
-            "category": self.category,
-            "settleCoin": 'USDT',
-        }
-        position_response = await self.get_request("/v5/position/list", params=params)
+        if self.category == 'spot':
+            wallet_data = await self.get_wallet_data()
 
-        positions = []
-        for position in position_response['result']['list']:
-            if position['liqPrice'] == '':
-                position['liqPrice'] = '0.000000000001'
+            positions = []
+            for coin, size in wallet_data.coins.items():
+                positions.append(PositionData(
+                    symbol=coin,
+                    size=size,
+                    side='BUY',
+                    avg_price='0',
+                    stop_price='0',
+                    take_price='0',
+                    liq_price='0',
+                    position_margin='0',
+                    leverage='1',
+                    created_time='17896314986062',
+                    updated_time='17896314986062',
+                    unrealised_pnl='0',
+                ))
+            return positions
 
-            if position['unrealisedPnl'] == '':
-                position['unrealisedPnl'] = '0'
-            if position['stopLoss'] == '':
-                position['stopLoss'] = '0'
-            if position['takeProfit'] == '':
-                position['takeProfit'] = '0'
-            positions.append(PositionData.model_validate(position))
-        return positions
+        else:
+            params = {
+                "category": self.category,
+                "settleCoin": 'USDT',
+            }
+            position_response = await self.get_request("/v5/position/list", params=params)
+
+            positions = []
+            for position in position_response['result']['list']:
+                if position['liqPrice'] == '':
+                    position['liqPrice'] = '0.000000000001'
+
+                if position['unrealisedPnl'] == '':
+                    position['unrealisedPnl'] = '0'
+                if position['stopLoss'] == '':
+                    position['stopLoss'] = '0'
+                if position['takeProfit'] == '':
+                    position['takeProfit'] = '0'
+                positions.append(PositionData.model_validate(position))
+            return positions
 
     async def get_position(self, symbol: str, side: str, empty_available: bool = False) -> PositionData | None:
+        if self.category == 'spot':
+            wallet_data = await self.get_wallet_data()
+
+            for coin, size in wallet_data.coins.items():
+                if symbol == coin:
+                    return PositionData(
+                        symbol=coin,
+                        size=size,
+                        side='BUY',
+                        avg_price='0',
+                        stop_price='0',
+                        take_price='0',
+                        liq_price='0',
+                        position_margin='0',
+                        leverage='1',
+                        created_time='17896314986062',
+                        updated_time='17896314986062',
+                        unrealised_pnl='0',
+                    )
+            return None
+
         side = side.upper()
         retries = 100
         params = {
