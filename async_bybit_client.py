@@ -828,6 +828,8 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
 
     async def get_position(self, symbol: str, side: str, empty_available: bool = False) -> PositionData | None:
         if self.category == 'spot':
+            if symbol != 'BTC':
+                symbol = symbol.replace('BTC', '')
             wallet_data = await self.get_wallet_data()
 
             for coin, size in wallet_data.coins.items():
