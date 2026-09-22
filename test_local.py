@@ -212,12 +212,12 @@ async def main(bingx: bool = False, bybit: bool = False, binance: bool = False, 
         ''' Bullet '''
         api_key = os.getenv('BYBIT_API_KEY')
         api_secret = os.getenv('BYBIT_SECRET')
-        print('BYBIT_API_KEY set:', bool(api_key), '| BYBIT_SECRET set:', bool(api_secret))
+        print('BYBIT_API_KEY set:', api_key, '| BYBIT_SECRET set:', bool(api_secret))
         bybit_client = AsyncBybitFuturesClient(
             session=session,
             api_key=api_key,
             api_secret=api_secret,
-            category="linear",
+            category="spot",
             test=False,
         )
 
@@ -717,23 +717,123 @@ async def test_ws_orders(client: AsyncBybitFuturesClient | AsyncBinanceFuturesCl
         print('cancel_order ', cancel_order)
         await asyncio.sleep(1)
 
+async def check_api_keys(
+        api_key: str,
+        secret_key: str,
+        required_sum: int,
+        max_sum: int | None,
+        buick: bool,
+        user_id: int,
+) -> (str, str):
+    # exchange_client = clients['bybit']  # clients['bingx'] if len(secret_key) > 40 else clients['bybit']
+    exchange_client = AsyncBybitFuturesClient
+
+    timeout = aiohttp.ClientTimeout(10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        client = exchange_client(
+            session=session,
+            api_key=api_key,
+            api_secret=secret_key
+        )
+        acc_info = await client.get_account_info()
+        logger.debug('acc_info %s', acc_info)
+
+        api_key_info = await client.get_api_key_info()
+        logger.debug('api_key_info %s', api_key_info)
+
+        try:
+            wallet_data = await client.get_wallet_data(retries=2)
+        except exceptions.EmptyWallet:
+            raise exceptions.InsufficientBalance
+        except Exception as e:
+            logger.error(e)
+            logger.critical(type(e))
+            raise e
+
+        if user_id in [1, 2, 3]:
+            return api_key_info.get('note'), str(wallet_data.wallet_balance)
+
+        if acc_info.get('isMasterTrader'):
+            if not buick:
+                raise exceptions.MasterTraderAccount
+
+        if wallet_data.wallet_balance < Decimal(required_sum):
+            print(f"{wallet_data.wallet_balance} wallet_data.wallet_balance < required_sum")
+
+            # raise exceptions.InsufficientBalance
+
+        if max_sum is not None and wallet_data.wallet_balance > Decimal(max_sum):
+            raise exceptions.MaxBalanceExceeded
+
+        if api_key_info.get("note") != "Sw000424":
+            raise exceptions.NotThirdPartyApp
+        permissions = api_key_info['permissions']['ContractTrade'] + api_key_info['permissions']['Wallet']
+        if 'Order' not in permissions or 'Position' not in permissions or 'AccountTransfer' not in permissions:
+            raise exceptions.NoNeededPermissions
+
+        if api_key_info.get('readOnly') != 0:
+            logger.info(api_key_info.get('readOnly'))
+            logger.info(type(api_key_info.get('readOnly')))
+            raise exceptions.ReadonlyApiKeys
+
+        return api_key_info.get('note'), str(wallet_data.wallet_balance)
+
 async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient | AsyncBingxFuturesClient,
                    position_mode: PositionMode = PositionMode.hedge, test_ws_orders: bool = False):
     if test_ws_orders:
         await test_ws_orders(client, position_mode)
         return
 
+    ex = await client.get_executions(symbol='ETHBTC')
+    print(ex)
+    exit()
 
     wallet = await client.get_wallet_data()
     print('wallet ', wallet)
+    pos = await client.get_position(symbol='ETHBTC', side='BUY')
+    print(pos)
+    exit()
+    pos = await client.get_all_positions()
+    for p in pos:
+        print(p)
+    exit()
+    x = await client.get_history_data_frame(
+        symbol='ETHBTC',
+        interval='1h',
+        candles=2,
+    )
+    print(x)
+    x = await client.new_order(
+        symbol='ETHBTC',
+        price='0.0321',
+        quantity='0.005',
+        order_type='LIMIT',
+        side='BUY',
+        reduce_only=False,
+        position_mode=position_mode
+    )
+    print(x)
+
+    order = await client.get_open_order(symbol='ETHBTC', order_id='2304719063374719744')
+
+    print(order)
+    exit()
+    print(api_key)
+    # await check_api_keys(api_key=api_key, secret_key=api_secret, required_sum=1, max_sum=None, buick=True, user_id=222)
+    exit()
+
+    x = await client.get_executions(symbol='ENAUSDT')
+    for i in x:
+        print(i)
 
     symbol = 'XRPUSDT'
     # symbol = 'MUSDT'
     leverage = 50.0
 
     print('get_order_history DOGEUSDT 97575966257')
-    x = await client.get_instrument_info(symbol='HYPEUSDT')
+    x = await client.get_instrument_info(symbol='STABLEUSDT')
     print(x)
+    exit()
 
     try:
         x = await client.new_order(
@@ -824,6 +924,6 @@ async def test_all(client: AsyncBybitFuturesClient | AsyncBinanceFuturesClient |
 
 if __name__ == "__main__":
     ''' pip install python-dotenv '''
-    asyncio.run(main(bingx=True, bybit=False, binance=True, test_ws=False))
-    # test_bybit_websocket(bybit_api_key=os.getenv('BYBIT_API_KEY'), bybit_secret=os.getenv('BYBIT_SECRET'))
+    asyncio.run(main(bingx=False, bybit=True, binance=False, test_ws=False))
+    # test_bybit_websocket(bybit_api_key=os.getenv('BYBIT_API_KEY'), bybit_secret=os.getenv('BYBIT_SECRET'), channel_type='spot')
     # test_binance_websocket(binance_api_key=os.getenv('BINANCE_API_KEY'), binance_secret=os.getenv('BINANCE_SECRET'))
