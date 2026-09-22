@@ -192,8 +192,8 @@ class AsyncBybitWebsocket:
         logger.info('Private WS Disconnected')
 
 
-    async def public_ws(self, klines_topics: list[str]):
-        url = PUBLIC_WSS.format(SUBDOMAIN='stream', DOMAIN='bybit', TLD=TLD_MAIN, CHANNEL_TYPE='linear')
+    async def public_ws(self, klines_topics: list[str], channel_type: str = 'linear'):
+        url = PUBLIC_WSS.format(SUBDOMAIN='stream', DOMAIN='bybit', TLD=TLD_MAIN, CHANNEL_TYPE=channel_type)
         async for ws in websockets.asyncio.client.connect(
                 url,
                 ping_interval=45,
@@ -284,6 +284,7 @@ class AsyncBybitWebsocket:
         klines_topics: list[str] = None,
         triple: bool = False,
         test: bool = False,
+        channel_type: str = 'linear'
     ):
         logger.info('run_all_ws websockets ver: %s', websockets.__version__)
         loops = [
@@ -295,11 +296,11 @@ class AsyncBybitWebsocket:
                 loops.append(self.private_ws(orders, wallet))
                 loops.append(self.private_ws(orders, wallet))
         if klines_topics:
-            loops.append(self.public_ws(klines_topics))
+            loops.append(self.public_ws(klines_topics, channel_type=channel_type))
 
         if test:
-            loops.append(self.get_klines_test('BTCUSDT'))
-            loops.append(self.get_klines_test('DOGEUSDT'))
+            loops.append(self.get_klines_test('XRPBTC'))
+            loops.append(self.get_klines_test('ETHBTC'))
             loops.append(self.get_orders_test())
 
         await asyncio.gather(*loops)
@@ -310,24 +311,33 @@ class AsyncBybitWebsocket:
             if klines['symbol'] != symbol:
                 raise ValueError(f"Symbol mismatch: {klines['symbol']} != {symbol}")
             if klines['confirm']:
-                raise Exception(f"Kline confirmed: {klines}")
+                print('confirm')
+                # raise Exception(f"Kline confirmed: {klines}")
             print(f"!!!!!!!!!---- {klines}")
 
     async def get_orders_test(self):
         while True:
-            klines = await self.orders_filtered_queues['HYPEUSDT'].get()
+            klines = await self.orders_filtered_queues['XRPBTC'].get()
             print(f'@@@@@@@---- {klines}')
 
 
-def test_bybit_websocket(bybit_api_key: str, bybit_secret: str):
+def test_bybit_websocket(bybit_api_key: str, bybit_secret: str, channel_type: str = 'linear'):
     ws = AsyncBybitWebsocket(api_key=bybit_api_key, api_secret=bybit_secret)
-    ws.create_orders_queues(['HYPEUSDT'])
-    ws.create_klines_queues(['BTCUSDT', 'DOGEUSDT'])
+    if channel_type == 'spot':
+        ws.create_orders_queues(['XRPBTC'])
+        ws.create_klines_queues(['XRPBTC', 'ETHBTC'])
+        topics = ["XRPBTC@kline_1h", "ETHBTC@kline_1m"]
+
+    else:
+        ws.create_orders_queues(['HYPEUSDT'])
+        ws.create_klines_queues(['BTCUSDT', 'DOGEUSDT'])
+        topics = ["BTCUSDT@kline_1h", "DOGEUSDT@kline_1m"]
 
     asyncio.run(ws.run_all_ws(
         orders=True,
         wallet=False,
-        klines_topics=["BTCUSDT@kline_1h", "DOGEUSDT@kline_1m"],
+        klines_topics=topics,
         triple=True,
-        test=True
+        test=True,
+        channel_type=channel_type
     ))
