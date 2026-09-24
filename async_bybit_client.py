@@ -165,7 +165,7 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
         else:
             raise Exception(f'Unexpected response {acc_info=}')
 
-    async def transfer(self, from_account: str, to_account: str, amount: float):
+    async def transfer(self, from_account: str, to_account: str, amount: str, coin: str = None):
         """
         from_account, to_account: CONTRACT, FUND or UNIFIED
         """
@@ -174,8 +174,8 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
         transfer_id = str(uuid.uuid4())
         params = {
             "transferId": transfer_id,
-            "coin": "USDT",
-            "amount": str(amount),
+            "coin": "USDT" if not coin else coin,
+            "amount": amount,
             "fromAccountType": from_account,
             "toAccountType": to_account
         }
