@@ -601,6 +601,10 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             if not order['avgPrice']:
                 order['avgPrice'] = order['price']
 
+            if self.category == 'spot':
+                order['qty'] = str(Decimal(order['qty']) - Decimal(order['cumExecFee']))
+                order['cumExecQty'] = str(Decimal(order['cumExecQty']) - Decimal(order['cumExecFee']))
+
             order_data = OrderData.model_validate(order)
             order_data.customize()
             return order_data
@@ -681,18 +685,23 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
                 continue
 
             opening_position = True
-            if Decimal(ex['closedSize']) > 0:
-                opening_position = False
-            if opening_position:
-                position_side = ex['side'].upper()
+            if self.category == 'spot':
+                if ex['side'] != 'Buy':
+                    opening_position = False
+                position_side = 'BUY'
             else:
-                position_side = 'SELL' if ex['side'].upper() == 'BUY' else 'BUY'
+                if Decimal(ex['closedSize']) > 0:
+                    opening_position = False
+                if opening_position:
+                    position_side = ex['side'].upper()
+                else:
+                    position_side = 'SELL' if ex['side'].upper() == 'BUY' else 'BUY'
             data = ExecutionsData(
                 symbol=ex['symbol'],
                 opening_position=opening_position,
                 side=ex['side'],
                 position_side=position_side,
-                exec_qty=ex['execQty'],
+                exec_qty=Decimal(ex['execQty']) - Decimal(ex['execFee']) if self.category == 'spot' else ex['execQty'],
                 order_id=ex['orderId'],
                 price=ex['execPrice'],
                 time=ex.get('execTime'),
