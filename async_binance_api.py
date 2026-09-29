@@ -44,18 +44,23 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         limiters_dict = {
             "/fapi/v1/time": "2400",
             "/fapi/v2/account": "1800",
+            "/api/v3/account": "1800",
             "/fapi/v2/positionRisk": "1800",
             "/fapi/v1/order": "2400",
+            "/api/v3/order": "2400",
             "/fapi/v1/openOrders": "1800",
+            "/api/v3/openOrders": "1800",
             "/fapi/v1/allOrders": "1800",
             "/fapi/v1/leverage": "2400",
             "/fapi/v1/exchangeInfo": "2400",
             "/fapi/v1/userTrades": "1800",
+            "/api/v3/myTrades": "1800",
             "/fapi/v1/allOpenOrders": "2400",
             "/fapi/v1/openOrder": "2400",
             "/fapi/v1/positionSide/dual": "2400",
             "/fapi/v1/marginType": "2400",
             "/fapi/v1/klines": "1800",
+            "/api/v3/klines": "1800",
             "/fapi/v1/income": "1200",
             "/sapi/v1/account/apiRestrictions": "2400",
             "/sapi/v1/capital/deposit/hisrec": "2400",
@@ -115,31 +120,36 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         m = method.upper()
 
         # Weights from Binance docs (USDⓈ-M Futures + SAPI used by this client).
-        if endpoint == "/fapi/v1/time":
+        weight_one = [
+            "/fapi/v1/time",
+            "/fapi/v1/exchangeInfo",
+            "/fapi/v1/leverage",
+            "/fapi/v1/marginType",
+            "/fapi/v1/positionSide/dual",
+            "/fapi/v1/allOpenOrders",
+            "/fapi/v1/openOrder",
+            "/fapi/v1/order",
+            "/api/v3/order",
+            "/sapi/v1/account/apiRestrictions",
+            "/sapi/v1/capital/deposit/hisrec",
+
+        ]
+        weight_five = [
+            "/fapi/v2/account",
+            "/api/v3/account",
+            "/fapi/v2/positionRisk",
+            "/fapi/v1/allOrders",
+            "/fapi/v1/userTrades",
+            "/api/v3/myTrades",
+
+        ]
+        if endpoint in weight_one:
             return 1
-        if endpoint == "/fapi/v1/exchangeInfo":
-            return 1
-        if endpoint == "/fapi/v2/account":
+        if endpoint in weight_five:
             return 5
-        if endpoint == "/fapi/v2/positionRisk":
-            return 5
-        if endpoint == "/fapi/v1/leverage":
-            return 1
-        if endpoint == "/fapi/v1/marginType":
-            return 1
-        if endpoint == "/fapi/v1/positionSide/dual":
-            return 1
-        if endpoint == "/fapi/v1/allOpenOrders":
-            return 1
-        if endpoint == "/fapi/v1/allOrders":
-            return 5
-        if endpoint == "/fapi/v1/userTrades":
-            return 5
-        if endpoint == "/fapi/v1/openOrder":
-            return 1
-        if endpoint == "/fapi/v1/openOrders":
+        if endpoint in ["/fapi/v1/openOrders", "/api/v3/openOrders"]:
             return 1 if params.get("symbol") else 40
-        if endpoint == "/fapi/v1/klines":
+        if endpoint in ["/fapi/v1/klines", "/api/v3/klines"]:
             try:
                 limit = int(params.get("limit", 500))
             except (TypeError, ValueError):
@@ -153,19 +163,8 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             return 10
         if endpoint == "/fapi/v1/income":
             return 30
-        if endpoint == "/fapi/v1/order":
-            if m == "POST":
-                # По документации New Order: 0 on IP rate limit.
-                # Но базовый transport всегда берет минимум 1 токен для совместимости
-                # с общим `async with limiter` контрактом.
-                return 1
-            return 1
 
         # SAPI endpoints used in AsyncBinanceFuturesClient.
-        if endpoint == "/sapi/v1/account/apiRestrictions":
-            return 1
-        if endpoint == "/sapi/v1/capital/deposit/hisrec":
-            return 1
         if endpoint == "/sapi/v1/asset/transfer":
             # Weight(UID) = 900. Используем как высокий вес для консервативного throttling.
             return 300
@@ -354,7 +353,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
                 raise exceptions.CheckAgainNeeded
             logger.warning("Binance transient backend error %s url=%s", response, url)
             raise exceptions.ServerError
-        if code in (-2011, -2013):
+        if code in (-2011, -2013, -2026):
             raise exceptions.OrderNotExist
         if code in (-2022,):
             raise exceptions.ReduceImpossible
@@ -368,7 +367,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             raise exceptions.FailedOrder
         if code in (-4059, -4046):
             raise exceptions.NoChange
-        if code in (-4164,):
+        if code in (-4164, -1013):
             raise exceptions.MinimumLimitExceeded
 
         logger.critical("Unknown Binance API error. url=%s status=%s response=%s", url, status_code, response)

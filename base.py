@@ -177,7 +177,7 @@ class OrderData(BaseModel):
     order_type: str | None = Field(validation_alias=AliasChoices("orderType", 'type', 'o'))
     qty: Decimal = Field(validation_alias=AliasChoices("qty", 'origQty', 'q'))
     leaves_qty: Decimal = Field(alias='leavesQty')
-    cum_exec_qty: Decimal = Field(validation_alias=AliasChoices('cumExecQty', 'executedQty', 'z'))
+    cum_exec_qty: Decimal = Field(validation_alias=AliasChoices('cum_exec_qty', 'cumExecQty', 'executedQty', 'z'))
     side: str = Field(validation_alias=AliasChoices("side", "S"))
     price: Decimal = Field(validation_alias=AliasChoices("price", "p"))
     avg_price: Decimal = Field(validation_alias=AliasChoices("avgPrice", "ap"))
@@ -284,7 +284,7 @@ class BaseAsyncFuturesClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def transfer(self, from_account: str, to_account: str, amount: float):
+    async def transfer(self, from_account: str, to_account: str, amount: str, coin: str = None):
         raise NotImplementedError
 
     @abstractmethod

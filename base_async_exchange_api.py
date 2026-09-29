@@ -170,6 +170,11 @@ class BaseAsyncExchangeAPI(ABC):
                         self.update_limits(endpoint, resp_headers_limit)
                         response_text = await resp.text()
                         response_data: dict
+                        if resp.status != 200:
+                            logger.warning("%s %s", resp.status, resp)
+                        # else:
+                        #     logger.debug("%s %s", resp.status, resp)
+
                         try:
                             response_data = await resp.json()
                         except json.JSONDecodeError:

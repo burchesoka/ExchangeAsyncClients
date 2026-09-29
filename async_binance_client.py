@@ -73,7 +73,10 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         return instruments
 
     async def get_account_info(self) -> dict:
-        return await self.get_request("/fapi/v2/account")
+        if self.category == 'spot':
+            return await self.get_request("/api/v3/account")
+        else:
+            return await self.get_request("/fapi/v2/account")
 
     async def is_master_trader_account(self):
         raise NotImplementedError
@@ -95,11 +98,19 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         available_balance = Decimal(str(response.get("availableBalance", "0")))
         unrealized_pnl = Decimal(str(response.get("totalUnrealizedProfit", "0")))
         equity = wallet_balance + unrealized_pnl
+        coins = {}
+        for i in response['balances']:
+            free = Decimal(i['free'])
+            locked = Decimal(i['locked'])
+            if free or locked:
+                balance = free + locked
+                coins[i['asset']] = balance.normalize()
 
         return WalletData(
             wallet_balance=wallet_balance,
             available_balance=available_balance,
             equity=equity,
+            coins=coins
         )
 
     async def switch_position_mode(
@@ -116,9 +127,10 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         except exceptions.NoChange:
             return True
 
-    async def transfer(self, from_account: str, to_account: str, amount: float):
+    async def transfer(self, from_account: str, to_account: str, amount: str, coin: str = None):
         transfer_map = {
             ("SPOT", "USDT_FUTURE"): "MAIN_UMFUTURE",
+            ("SPOT", "FUND"): "MAIN_FUNDING",
             ("USDT_FUTURE", "SPOT"): "UMFUTURE_MAIN",
             ("CONTRACT", "FUND"): "UMFUTURE_FUNDING",
             ("FUND", "CONTRACT"): "FUNDING_UMFUTURE",
@@ -128,7 +140,7 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
             raise exceptions.TransferUnable(f"Unsupported transfer: {from_account} -> {to_account}")
         return await self.post_request(
             "/sapi/v1/asset/transfer",
-            body={"type": transfer_type, "asset": "USDT", "amount": str(amount)},
+            body={"type": transfer_type, "asset": "USDT" if not coin else coin, "amount": str(amount)},
         )
 
     async def set_leverage(
@@ -205,10 +217,11 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
             }
         if end is None:
             params.pop('endTime')
-        response = await self.public_get_request(
-            "/fapi/v1/klines",
-            params=params,
-        )
+        if self.category == 'spot':
+            tail = "/api/v3/klines"
+        else:
+            tail = "/fapi/v1/klines"
+        response = await self.public_get_request(tail,params=params,)
         return response
 
     async def get_history_data_frame(
@@ -275,7 +288,13 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         if stop_price is not None:
             params["stopPrice"] = str(stop_price)
 
-        response = await self.post_request("/fapi/v1/order", body=params)
+        if self.category == 'spot':
+            tail = "/api/v3/order"
+            params.pop('positionSide')
+        else:
+            tail = "/fapi/v1/order"
+
+        response = await self.post_request(tail, body=params)
         logger.debug('new_order response: %s', response)
 
         if response.get("orderId") is not None:
@@ -284,16 +303,26 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
             raise Exception(response)
 
     async def cancel_all_orders(self):
-        open_orders = await self.get_open_orders(coin='USDT')
+        if self.category == 'spot':
+            open_orders = await self.get_open_orders()
+            tail = "/api/v3/openOrders"
+        else:
+            open_orders = await self.get_open_orders(coin='USDT')
+            tail = "/fapi/v1/allOpenOrders"
         symbols = sorted({order.symbol for order in open_orders})
         result = []
+
         for symbol in symbols:
-            result.append(await self.delete_request("/fapi/v1/allOpenOrders", params={"symbol": symbol}))
+            result.append(await self.delete_request(tail, params={"symbol": symbol}))
         return result
 
     async def cancel_order(self, symbol: str, order_id: str):
+        if self.category == 'spot':
+            tail = "/api/v3/order"
+        else:
+            tail = "/fapi/v1/order"
         try:
-            resp = await self.delete_request("/fapi/v1/order", params={"symbol": symbol, "orderId": order_id})
+            await self.delete_request(tail, params={"symbol": symbol, "orderId": order_id})
             return True
         except exceptions.OrderNotExist:
             try:
@@ -306,21 +335,42 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
 
     def _order_from_binance(self, item: dict) -> OrderData:
         now_ms = int(time.time() * 1000)
+        qty = Decimal(item.get("origQty", item.get("qty", "0")))
+        side = item.get("side", "")
+        status = item.get("status")
+        price = str(item.get("price", "0"))
+        avg_price = item.get("avgPrice", "0")
+        cum_exec_qty = item.get("executedQty", item.get("cumExecQty"))
+        leaves_qty = Decimal(str(item.get("origQty", "0"))) - Decimal(str(item.get("executedQty", "0")))
+
+        if self.category == 'spot':
+            qty = qty - Decimal(item.get('commission', '0'))
+            if not side:
+                if item.get('isBuyer'):
+                    side = 'BUY'
+                else:
+                    side = 'SELL'
+            if status is None:
+                status = 'FILLED'
+                leaves_qty = '0'
+            if avg_price == '0' and status == 'FILLED':
+                avg_price = price
+            if cum_exec_qty is None:
+                cum_exec_qty = qty
+
         payload = {
             "orderId": str(item.get("orderId") or item.get("id") or ""),
             "symbol": item.get("symbol", ""),
-            "orderType": ORDER_SPECS.get(item.get("type", "MARKET"), "Market"),
-            "qty": str(item.get("origQty", item.get("qty", "0"))),
-            "leavesQty": str(
-                Decimal(str(item.get("origQty", "0"))) - Decimal(str(item.get("executedQty", "0")))
-            ),
-            "cumExecQty": str(item.get("executedQty", item.get("cumExecQty", "0"))),
-            "side": item.get("side", ""),
-            "price": str(item.get("price", "0")),
-            "avgPrice": str(item.get("avgPrice", "0")),
+            "orderType": ORDER_SPECS.get(item.get("type", "LIMIT"), "Limit"),
+            "qty": str(qty.normalize()),
+            "leavesQty": str(leaves_qty),
+            "cumExecQty": cum_exec_qty,
+            "side": side,
+            "price": price,
+            "avgPrice": avg_price,
             "takeProfit": str(item.get("stopPrice", "0")),
             "stopLoss": str(item.get("stopPrice", "0")),
-            "orderStatus": item.get("status", "NEW"),
+            "orderStatus": status,
             "createdTime": str(item.get("time", now_ms)),
             "updatedTime": str(item.get("updateTime", now_ms)),
         }
@@ -337,7 +387,23 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         retries: int = 120
     ) -> list[OrderData] | OrderData:
         if order_id is not None:
-            response = await self.get_request("/fapi/v1/order", params={"symbol": symbol, "orderId": order_id})
+            if self.category == 'spot':
+                ex = await self.get_executions(symbol=symbol, order_id=order_id)
+                logger.debug(ex)
+                if ex:
+                    orders = []
+                    for i in range(len(ex)):
+                        orders.append(self._order_from_binance(ex[i]))
+                    if len(orders) > 1:
+                        logger.info(orders)
+                        logger.info(ex)
+                        raise Exception('Several executions for one order')
+                    return orders[0]
+
+                tail = "/api/v3/order"
+            else:
+                tail = "/fapi/v1/order"
+            response = await self.get_request(tail, params={"symbol": symbol, "orderId": order_id})
             order = self._order_from_binance(response)
             if order.order_status.upper() == 'NEW':
                 raise exceptions.OrderNotFound
@@ -383,7 +449,8 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         start_time: int | None = None,
         end_time: int | None = None,
         limit: int = 1000,
-    ) -> list[ExecutionsData]:
+        order_id: str = None,
+    ) -> list[ExecutionsData] | dict:
         params = {"symbol": symbol, "limit": min(limit, 1000)}
         if start_time is not None:
             start_time = int(start_time * 1000)
@@ -391,8 +458,19 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         if end_time is not None:
             end_time = int(end_time * 1000)
             params["endTime"] = end_time
-        response = await self.get_request("/fapi/v1/userTrades", params=params)
+        if order_id:
+            params["orderId"] = order_id
+
+        if self.category == 'spot':
+            tail = "/api/v3/myTrades"
+        else:
+            tail = "/fapi/v1/userTrades"
+
+        response = await self.get_request(tail, params=params)
         logger.debug('get_executions response: %s', response)
+        if order_id:
+            return response
+
         results = []
         for item in response:
             position_side = item.get("positionSide", "BOTH")
@@ -404,10 +482,15 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
                 opening_position = True
             else:
                 opening_position = False
+            if self.category == 'spot':
+                position_side = "LONG"
+                opening_position = item['isBuyer']
+                side = 'BUY' if opening_position else 'SELL'
+
             payload = {
                 "symbol": item.get("symbol", ""),
                 "opening_position": opening_position,
-                "exec_qty": str(item.get("qty", "0")),
+                "exec_qty": str(item.get("qty", "0")) if not self.category == 'spot' else str((Decimal(item.get("qty", "0")) - Decimal(item.get("commission", "0"))).normalize()),
                 "order_id": str(item.get("orderId", "")),
                 "price": str(item.get("price", "0")),
                 "position_side": position_side,
@@ -421,9 +504,20 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         return results
 
     async def get_open_order(self, symbol: str, order_id: str, retries: int = 70) -> OrderData:
+        if self.category == 'spot':
+            tail = "/api/v3/order"
+        else:
+            tail = "/fapi/v1/openOrder"
+
         try:
-            response = await self.get_request("/fapi/v1/openOrder", params={"symbol": symbol, "orderId": order_id})
-            return self._order_from_binance(response)
+            response = await self.get_request(tail, params={"symbol": symbol, "orderId": order_id})
+            order = self._order_from_binance(response)
+            if 'FILLED' == order.order_status.upper():
+                raise exceptions.AlreadyFilledOrder
+            elif 'CANCEL' in order.order_status.upper():
+                logger.debug('Cancelled order in history %s', order)
+                raise exceptions.CancelledOrder
+            return order
         except exceptions.OrderNotExist:
             try:
                 order = await self.get_order_history(symbol, order_id, retries=retries)
@@ -449,11 +543,16 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         coin: str | None = None,
         retries: int = 70
     ) -> list[OrderData]:
-        if not any([symbol, coin]):
-            logger.critical('get_open_orders did not got symbol/coin')
-            raise AttributeError('get_open_orders did not got symbol/coin')
         params = {"symbol": symbol} if symbol else {}
-        response = await self.get_request("/fapi/v1/openOrders", params=params)
+
+        if self.category == 'spot':
+            tail = "/api/v3/openOrders"
+
+        else:
+            tail = "/fapi/v1/openOrders"
+
+        response = await self.get_request(tail, params=params)
+        logger.debug(response)
         orders = [self._order_from_binance(item) for item in response]
         # if side:
         #     orders = [o for o in orders if o.side.upper() == side.upper()]
@@ -482,6 +581,27 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         return position
 
     async def get_all_positions(self) -> list[PositionData]:
+        if self.category == 'spot':
+            wallet_data = await self.get_wallet_data()
+
+            positions = []
+            for coin, size in wallet_data.coins.items():
+                positions.append(PositionData(
+                    symbol=coin,
+                    size=size,
+                    side='BUY',
+                    avg_price='0',
+                    stop_price='0',
+                    take_price='0',
+                    liq_price='0',
+                    position_margin='0',
+                    leverage='1',
+                    created_time='17896314986062',
+                    updated_time='17896314986062',
+                    unrealised_pnl='0',
+                ))
+            return positions
+
         response = await self.get_request("/fapi/v2/positionRisk")
         results = []
         for item in response:
@@ -491,6 +611,29 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         return results
 
     async def get_position(self, symbol: str, side: str, empty_available: bool = False) -> PositionData | None:
+        if self.category == 'spot':
+            if symbol != 'BTC':
+                symbol = symbol.replace('BTC', '')
+            wallet_data = await self.get_wallet_data()
+
+            for coin, size in wallet_data.coins.items():
+                if symbol == coin:
+                    return PositionData(
+                        symbol=coin,
+                        size=size,
+                        side='BUY',
+                        avg_price='0',
+                        stop_price='0',
+                        take_price='0',
+                        liq_price='0',
+                        position_margin='0',
+                        leverage='1',
+                        created_time='17896314986062',
+                        updated_time='17896314986062',
+                        unrealised_pnl='0',
+                    )
+            return None
+
         side_ = 'LONG' if side.upper() == 'BUY' else 'SHORT'
         response = await self.get_request("/fapi/v2/positionRisk", params={"symbol": symbol})
 
