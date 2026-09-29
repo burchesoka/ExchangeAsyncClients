@@ -334,7 +334,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             raise exceptions.AuthenticationError
         if code in (-1002,):
             raise exceptions.NoNeededPermissions
-        if code in (-2019,):
+        if code in (-2019, -2010):
             raise exceptions.MarginInsufficient
         if (
             code in (-1015, -1003, -1008)
@@ -363,8 +363,8 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         if code in (-1111, -1100, -1102):
             logger.error("OrderValidationError. url=%s status=%s response=%s", url, status_code, response)
             raise exceptions.OrderValidationError
-        if code in (-2010,):
-            raise exceptions.FailedOrder
+        # if code in (-2010,):
+        #     raise exceptions.FailedOrder
         if code in (-4059, -4046):
             raise exceptions.NoChange
         if code in (-4164, -1013):

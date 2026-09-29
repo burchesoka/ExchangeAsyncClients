@@ -3,6 +3,8 @@ import copy
 import json
 import logging
 import time
+import hmac
+import hashlib
 
 import aiohttp
 import websockets.asyncio.client
@@ -10,8 +12,11 @@ from urllib.parse import urlencode
 
 from base import OrderData
 
+
 logger = logging.getLogger(__name__)
 
+SPOT_WS_PRIVATE_URL = "wss://ws-api.binance.com:443/ws-api/v3"
+SPOT_WS_PUBLIC_URL = "wss://stream.binance.com:9443/ws"
 
 WSS_NAME = "Binance Futures"
 PRIVATE_WSS = "wss://fstream.binance.com/private/ws?{query}"
@@ -56,6 +61,12 @@ class AsyncBinanceWebsocket:
             "confirm": bool(k.get("x", False)),
             "timestamp": int(raw.get("E", 0) or 0) if isinstance(raw, dict) else 0,
         }
+
+    @staticmethod
+    def _generate_signature(params_dict, secret):
+        ordered_params = sorted(params_dict.items())
+        query_string = "&".join([f"{k}={v}" for k, v in ordered_params])
+        return hmac.new(secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
 
     @staticmethod
     def _normalize_order(raw: dict) -> OrderData:
@@ -138,10 +149,7 @@ class AsyncBinanceWebsocket:
             raise AttributeError(f'No period {klines_topics}')
         return normalized_topics
 
-    async def private_ws(self, orders: bool, wallet: bool):
-        if not any([orders, wallet]):
-            raise ValueError
-
+    async def _private_futures_ws(self, orders: bool, wallet: bool):
         headers = {"X-MBX-APIKEY": self.api_key}
         async with aiohttp.ClientSession(headers=headers) as session:
             while True:
@@ -167,8 +175,8 @@ class AsyncBinanceWebsocket:
                     )
 
                     async for ws in websockets.asyncio.client.connect(
-                        url,
-                        ping_interval=45,
+                            url,
+                            ping_interval=45,
                     ):
                         try:
                             logger.info("Private WS Connected")
@@ -180,14 +188,16 @@ class AsyncBinanceWebsocket:
                                 event_type = payload.get("e")
                                 if event_type == "ORDER_TRADE_UPDATE" and orders:
                                     order_payload = payload.get("o") or payload
-                                    await self.orders_queue.put([order_payload] if isinstance(order_payload, dict) else order_payload)
+                                    await self.orders_queue.put(
+                                        [order_payload] if isinstance(order_payload, dict) else order_payload)
                                 elif event_type == "ACCOUNT_UPDATE" and wallet:
                                     await self.wallet_queue.put(payload)
                                 elif event_type == "listenKeyExpired":
                                     logger.warning("listenKey expired, reconnecting")
                                     break
 
-                        except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedError) as e:
+                        except (websockets.exceptions.ConnectionClosed,
+                                websockets.exceptions.ConnectionClosedError) as e:
                             logger.info("Reconnect private WS (%s)", e)
                             continue
                         except asyncio.exceptions.CancelledError:
@@ -228,6 +238,58 @@ class AsyncBinanceWebsocket:
 
         logger.info("Private WS Disconnected")
 
+    async def _private_spot_ws(self, orders: bool, wallet: bool):
+        async with websockets.asyncio.client.connect(SPOT_WS_PRIVATE_URL) as websocket:
+            timestamp = int(time.time() * 1000)
+            payload_params = {"apiKey": self.api_key, "timestamp": timestamp}
+            payload_params["signature"] = self._generate_signature(payload_params, self.api_secret)
+
+            user_data_request = {
+                "id": "user_stream_auth",
+                "method": "userDataStream.subscribe.signature",
+                "params": payload_params
+            }
+            await websocket.send(json.dumps(user_data_request))
+            logger.debug("✅ Авторизация в User Data Stream отправлена.")
+
+            async for msg in websocket:
+                try:
+                    data = json.loads(msg)
+                    logger.debug('ws_stream %s', data)
+
+                    # Ловим системный ответ об успешной авторизации
+                    if data.get("id") == "user_stream_auth":
+                        if "error" in data:
+                            logger.warning(f"❌ Ошибка авторизации ордеров: {data['error']}")
+                        else:
+                            logger.info("✅ [ORDERS] Стрим ордеров успешно запущен и слушает события...")
+                        continue
+
+                    payload = data.get("event", data)
+                    event_type = payload.get("e")
+                    if event_type == "executionReport" and orders:
+                        order_payload = payload.get("o") or payload
+                        await self.orders_queue.put(
+                            [payload] if isinstance(payload, dict) else payload)
+
+
+                        '''??????? wallet'''
+                    elif event_type == "ACCOUNT_UPDATE" and wallet:
+                        await self.wallet_queue.put(payload)
+
+                except Exception as e:
+                    print(f"Ошибка парсинга ордеров: {e}")
+
+    async def private_ws(self, orders: bool, wallet: bool):
+        if not any([orders, wallet]):
+            raise ValueError
+
+        if self.channel_type == 'spot':
+            await self._private_spot_ws(orders, wallet)
+        else:
+            await self._private_futures_ws(orders, wallet)
+
+
     async def public_ws(self, klines_topics: list[str]):
         normalized_topics = self._normalize_public_topics(klines_topics)
         logger.info("Binance market streams: %s", normalized_topics)
@@ -237,11 +299,11 @@ class AsyncBinanceWebsocket:
         ]
         await asyncio.gather(*loops)
 
-    async def _public_stream_loop(self, stream_topic: str):
+    async def _public_stream_loop_futures(self, stream_topic: str):
         url = MARKET_STREAM_WSS.format(stream=stream_topic)
         async for ws in websockets.asyncio.client.connect(
-            url,
-            ping_interval=45,
+                url,
+                ping_interval=45,
         ):
             try:
                 logger.info("Public WS Connected stream=%s", stream_topic)
@@ -275,6 +337,41 @@ class AsyncBinanceWebsocket:
 
         logger.info("Public WS Disconnected stream=%s", stream_topic)
 
+    async def _public_stream_loop_spot(self, stream_topic: str):
+        """Поток №1: Публичные рыночные свечи (Klines)"""
+        async with websockets.asyncio.client.connect(SPOT_WS_PUBLIC_URL) as websocket:
+            kline_request = {
+                "id": "kline_sub",
+                "method": "SUBSCRIBE",
+                "params": [stream_topic]
+            }
+            await websocket.send(json.dumps(kline_request))
+            logger.info(f"✅ Подписка на Klines ({stream_topic}) оформлена.")
+
+            async for message in websocket:
+                msg = json.loads(message)
+                payload = msg.get("data", msg)
+                stream = payload.get("e", "") or msg.get("stream", "")
+                if not stream:
+                    continue
+
+                if "kline" in stream:
+                    data = payload.get("k")
+                    if not isinstance(data, dict):
+                        continue
+                    symbol = data.get("s").upper()
+                    if symbol not in self.klines_queues:
+                        self.klines_queues[symbol] = asyncio.Queue()
+                    normalized = self._normalize_kline(symbol=symbol, raw=data)
+                    if normalized:
+                        await self.klines_queues[symbol].put(normalized)
+
+    async def _public_stream_loop(self, stream_topic: str):
+        if self.channel_type == 'spot':
+            await self._public_stream_loop_spot(stream_topic)
+        else:
+            await self._public_stream_loop_futures(stream_topic)
+
     async def orders_getter_loop(self):
         while True:
             items_copy = copy.deepcopy(await self.orders_queue.get())
@@ -282,7 +379,6 @@ class AsyncBinanceWebsocket:
                 if str(items_copy) not in self.orders_items:
                     self.orders_items.append(str(items_copy))
                     orders_by_symbol = {}
-                    logger.debug(items_copy)
                     for order in items_copy:
                         try:
                             order_data = self._normalize_order(order)
@@ -338,12 +434,41 @@ class AsyncBinanceWebsocket:
             loops.append(self.public_ws(klines_topics))
 
         if test:
+            loops.append(self.test_order())
             loops.append(self.get_klines_test('XRPBTC'))
             loops.append(self.get_klines_test('ETHBTC'))
-            loops.append(self.get_orders_test(symbol='XRPBTC' if self.channel_type == 'spot' else 'HYPEUSDT'))
+            loops.append(self.get_orders_test(symbol='ETHBTC' if self.channel_type == 'spot' else 'HYPEUSDT'))
 
         await asyncio.gather(*loops)
-    
+
+    async def test_order(self):
+        from clients import AsyncBinanceFuturesClient
+        async with aiohttp.ClientSession() as session:
+            client = AsyncBinanceFuturesClient(
+                api_key=self.api_key,
+                api_secret=self.api_secret,
+                session=session,
+                category=self.channel_type
+            )
+            symbol = 'ETHBTC'
+            await asyncio.sleep(15)
+            c = await client.cancel_all_orders()
+            print(c)
+
+            x = await client.new_order(
+                symbol=symbol,
+                price='0.03',
+                quantity='0.004',
+                order_type='LIMIT',
+                side='BUY',
+                reduce_only=False,
+                position_mode='hedge'
+            )
+            print(x)
+            time.sleep(10)
+            c = await client.cancel_all_orders()
+            print(c)
+
     async def get_klines_test(self, symbol: str):
         while True:
             klines = await self.klines_queues[symbol].get()
@@ -358,7 +483,7 @@ class AsyncBinanceWebsocket:
 def test_binance_websocket(binance_api_key: str, binance_secret: str, channel_type: str = 'linear'):
     ws = AsyncBinanceWebsocket(api_key=binance_api_key, api_secret=binance_secret, channel_type=channel_type)
     if channel_type == 'spot':
-        ws.create_orders_queues(['XRPBTC'])
+        ws.create_orders_queues(['ETHBTC'])
         ws.create_klines_queues(['XRPBTC', 'ETHBTC'])
         topics = ["XRPBTC@kline_1h", "ETHBTC@kline_1m"]
 
