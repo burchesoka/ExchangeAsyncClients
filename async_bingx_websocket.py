@@ -128,9 +128,10 @@ class AsyncBingxWebsocket:
     - приват: listenKey в query + события e=ORDER_TRADE_UPDATE / ACCOUNT_UPDATE (как в bingx-php SDK)
     """
 
-    def __init__(self, api_key: str | None = None, api_secret: str | None = None):
+    def __init__(self, api_key: str | None = None, api_secret: str | None = None, channel_type: str = 'linear'):
         self.api_key = api_key
         self.api_secret = api_secret
+        self.channel_type = channel_type
 
         self.lock = asyncio.Lock()
 

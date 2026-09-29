@@ -28,9 +28,10 @@ TLD_MAIN = "com"
 
 
 class AsyncBybitWebsocket:
-    def __init__(self, api_key: str = None, api_secret: str = None):
+    def __init__(self, api_key: str = None, api_secret: str = None, channel_type: str = 'linear'):
         self.api_key = api_key
         self.api_secret = api_secret
+        self.channel_type = channel_type
 
         self.lock = asyncio.Lock()
 
@@ -192,8 +193,8 @@ class AsyncBybitWebsocket:
         logger.info('Private WS Disconnected')
 
 
-    async def public_ws(self, klines_topics: list[str], channel_type: str = 'linear'):
-        url = PUBLIC_WSS.format(SUBDOMAIN='stream', DOMAIN='bybit', TLD=TLD_MAIN, CHANNEL_TYPE=channel_type)
+    async def public_ws(self, klines_topics: list[str]):
+        url = PUBLIC_WSS.format(SUBDOMAIN='stream', DOMAIN='bybit', TLD=TLD_MAIN, CHANNEL_TYPE=self.channel_type)
         async for ws in websockets.asyncio.client.connect(
                 url,
                 ping_interval=45,
@@ -284,7 +285,6 @@ class AsyncBybitWebsocket:
         klines_topics: list[str] = None,
         triple: bool = False,
         test: bool = False,
-        channel_type: str = 'linear'
     ):
         logger.info('run_all_ws websockets ver: %s', websockets.__version__)
         loops = [
@@ -296,7 +296,7 @@ class AsyncBybitWebsocket:
                 loops.append(self.private_ws(orders, wallet))
                 loops.append(self.private_ws(orders, wallet))
         if klines_topics:
-            loops.append(self.public_ws(klines_topics, channel_type=channel_type))
+            loops.append(self.public_ws(klines_topics))
 
         if test:
             loops.append(self.get_klines_test('XRPBTC'))
@@ -322,7 +322,7 @@ class AsyncBybitWebsocket:
 
 
 def test_bybit_websocket(bybit_api_key: str, bybit_secret: str, channel_type: str = 'linear'):
-    ws = AsyncBybitWebsocket(api_key=bybit_api_key, api_secret=bybit_secret)
+    ws = AsyncBybitWebsocket(api_key=bybit_api_key, api_secret=bybit_secret, channel_type=channel_type)
     if channel_type == 'spot':
         ws.create_orders_queues(['XRPBTC'])
         ws.create_klines_queues(['XRPBTC', 'ETHBTC'])
@@ -339,5 +339,4 @@ def test_bybit_websocket(bybit_api_key: str, bybit_secret: str, channel_type: st
         klines_topics=topics,
         triple=True,
         test=True,
-        channel_type=channel_type
     ))

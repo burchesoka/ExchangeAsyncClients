@@ -22,9 +22,10 @@ FAPI_BASE_URL = "https://fapi.binance.com"
 
 
 class AsyncBinanceWebsocket:
-    def __init__(self, api_key: str = None, api_secret: str = None):
+    def __init__(self, api_key: str = None, api_secret: str = None, channel_type: str = 'linear'):
         self.api_key = api_key
         self.api_secret = api_secret
+        self.channel_type = channel_type
 
         self.lock = asyncio.Lock()
 
@@ -353,15 +354,22 @@ class AsyncBinanceWebsocket:
             print(f'@@@@@@@---- {klines}')
 
 
-def test_binance_websocket(binance_api_key: str, binance_secret: str):
-    ws = AsyncBinanceWebsocket(api_key=binance_api_key, api_secret=binance_secret)
-    ws.create_orders_queues(['HYPEUSDT'])
-    ws.create_klines_queues(['BTCUSDT', 'DOGEUSDT'])
+def test_binance_websocket(binance_api_key: str, binance_secret: str, channel_type: str = 'linear'):
+    ws = AsyncBinanceWebsocket(api_key=binance_api_key, api_secret=binance_secret, channel_type=channel_type)
+    if channel_type == 'spot':
+        ws.create_orders_queues(['XRPBTC'])
+        ws.create_klines_queues(['XRPBTC', 'ETHBTC'])
+        topics = ["XRPBTC@kline_1h", "ETHBTC@kline_1m"]
+
+    else:
+        ws.create_orders_queues(['HYPEUSDT'])
+        ws.create_klines_queues(['BTCUSDT', 'DOGEUSDT'])
+        topics = ["BTCUSDT@kline_1h", "DOGEUSDT@kline_1m"]
 
     asyncio.run(ws.run_all_ws(
         orders=True,
         wallet=False,
-        klines_topics=["BTCUSDT@kline_1h", "DOGEUSDT@kline_1m"],
-        triple=True,
-        test=True
+        klines_topics=topics,
+        triple=False,
+        test=True,
     ))
