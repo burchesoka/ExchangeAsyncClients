@@ -318,12 +318,12 @@ class AsyncBinanceWebsocket:
             self.klines_queues[symbol.upper()] = asyncio.Queue()
 
     async def run_all_ws(
-        self,
-        orders: bool = False,
-        wallet: bool = False,
-        klines_topics: list[str] = None,
-        triple: bool = False,
-        test: bool = False,
+            self,
+            orders: bool = False,
+            wallet: bool = False,
+            klines_topics: list[str] = None,
+            triple: bool = False,
+            test: bool = False,
     ):
         logger.info("run_all_ws websockets ver: %s", websockets.__version__)
         loops = [
@@ -338,19 +338,20 @@ class AsyncBinanceWebsocket:
             loops.append(self.public_ws(klines_topics))
 
         if test:
-            loops.append(self.get_klines_test())
-            loops.append(self.get_orders_test())
+            loops.append(self.get_klines_test('XRPBTC'))
+            loops.append(self.get_klines_test('ETHBTC'))
+            loops.append(self.get_orders_test(symbol='XRPBTC' if self.channel_type == 'spot' else 'HYPEUSDT'))
 
         await asyncio.gather(*loops)
     
-    async def get_klines_test(self):
+    async def get_klines_test(self, symbol: str):
         while True:
-            klines = await self.klines_queues['BTCUSDT'].get()
+            klines = await self.klines_queues[symbol].get()
             print(f'!!!!!!!!!---- {klines}')
 
-    async def get_orders_test(self):
+    async def get_orders_test(self, symbol):
         while True:
-            klines = await self.orders_filtered_queues['HYPEUSDT'].get()
+            klines = await self.orders_filtered_queues[symbol].get()
             print(f'@@@@@@@---- {klines}')
 
 
