@@ -250,7 +250,7 @@ class AsyncBinanceWebsocket:
                 "params": payload_params
             }
             await websocket.send(json.dumps(user_data_request))
-            logger.debug("✅ Авторизация в User Data Stream отправлена.")
+            logger.debug("Авторизация в User Data Stream отправлена.")
 
             async for msg in websocket:
                 try:
@@ -260,9 +260,9 @@ class AsyncBinanceWebsocket:
                     # Ловим системный ответ об успешной авторизации
                     if data.get("id") == "user_stream_auth":
                         if "error" in data:
-                            logger.warning(f"❌ Ошибка авторизации ордеров: {data['error']}")
+                            logger.warning("Ошибка авторизации ордеров: %s", data['error'])
                         else:
-                            logger.info("✅ [ORDERS] Стрим ордеров успешно запущен и слушает события...")
+                            logger.info("[ORDERS] Стрим ордеров успешно запущен и слушает события...")
                         continue
 
                     payload = data.get("event", data)

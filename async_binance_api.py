@@ -53,6 +53,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
             "/fapi/v1/allOrders": "1800",
             "/fapi/v1/leverage": "2400",
             "/fapi/v1/exchangeInfo": "2400",
+            "/api/v3/exchangeInfo": "2400",
             "/fapi/v1/userTrades": "1800",
             "/api/v3/myTrades": "1800",
             "/fapi/v1/allOpenOrders": "2400",
@@ -123,6 +124,7 @@ class BinanceAPI(BaseAsyncExchangeAPI):
         weight_one = [
             "/fapi/v1/time",
             "/fapi/v1/exchangeInfo",
+            "/api/v3/exchangeInfo",
             "/fapi/v1/leverage",
             "/fapi/v1/marginType",
             "/fapi/v1/positionSide/dual",
