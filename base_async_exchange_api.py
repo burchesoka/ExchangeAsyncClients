@@ -199,12 +199,12 @@ class BaseAsyncExchangeAPI(ABC):
                     await asyncio.sleep(network_sleep_seconds)
 
                 except aiohttp.client.ClientOSError as e:
-                    if "Connection reset by peer" not in str(e):
-                        logger.critical("Unexpected ClientOSError %s", e)
-                        raise
+                    # if "Connection reset by peer" not in str(e):
+                    #     logger.critical("Unexpected ClientOSError %s", e)
+                    #     raise
                     retries -= 1
                     last_error = "ClientOSError"
-                    logger.critical("ClientOSError retries=%s url=%s err=%s", retries, url, e)
+                    logger.critical("ClientOSError retries=%s url=%s err=%s", retries, url, str(e))
                     if not retries:
                         raise exceptions.NetworkError from e
                     await asyncio.sleep(network_sleep_seconds)

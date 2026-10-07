@@ -239,46 +239,59 @@ class AsyncBinanceWebsocket:
         logger.info("Private WS Disconnected")
 
     async def _private_spot_ws(self, orders: bool, wallet: bool):
-        async with websockets.asyncio.client.connect(SPOT_WS_PRIVATE_URL) as websocket:
-            timestamp = int(time.time() * 1000)
-            payload_params = {"apiKey": self.api_key, "timestamp": timestamp}
-            payload_params["signature"] = self._generate_signature(payload_params, self.api_secret)
+        while True:
+            try:
+                async with websockets.asyncio.client.connect(SPOT_WS_PRIVATE_URL) as websocket:
+                    timestamp = int(time.time() * 1000)
+                    payload_params = {"apiKey": self.api_key, "timestamp": timestamp}
+                    payload_params["signature"] = self._generate_signature(payload_params, self.api_secret)
 
-            user_data_request = {
-                "id": "user_stream_auth",
-                "method": "userDataStream.subscribe.signature",
-                "params": payload_params
-            }
-            await websocket.send(json.dumps(user_data_request))
-            logger.debug("Авторизация в User Data Stream отправлена.")
+                    user_data_request = {
+                        "id": "user_stream_auth",
+                        "method": "userDataStream.subscribe.signature",
+                        "params": payload_params
+                    }
+                    await websocket.send(json.dumps(user_data_request))
+                    logger.debug("Авторизация в User Data Stream отправлена.")
 
-            async for msg in websocket:
-                try:
-                    data = json.loads(msg)
-                    logger.debug('ws_stream %s', data)
+                    async for msg in websocket:
+                        try:
+                            data = json.loads(msg)
+                            logger.debug('ws_stream %s', data)
 
-                    # Ловим системный ответ об успешной авторизации
-                    if data.get("id") == "user_stream_auth":
-                        if "error" in data:
-                            logger.warning("Ошибка авторизации ордеров: %s", data['error'])
-                        else:
-                            logger.info("[ORDERS] Стрим ордеров успешно запущен и слушает события...")
-                        continue
+                            # Ловим системный ответ об успешной авторизации
+                            if data.get("id") == "user_stream_auth":
+                                if "error" in data:
+                                    logger.warning("Ошибка авторизации ордеров: %s", data['error'])
+                                else:
+                                    logger.info("[ORDERS] Стрим ордеров успешно запущен и слушает события...")
+                                continue
 
-                    payload = data.get("event", data)
-                    event_type = payload.get("e")
-                    if event_type == "executionReport" and orders:
-                        order_payload = payload.get("o") or payload
-                        await self.orders_queue.put(
-                            [payload] if isinstance(payload, dict) else payload)
+                            payload = data.get("event", data)
+                            event_type = payload.get("e")
+                            if event_type == "executionReport" and orders:
+                                order_payload = payload.get("o") or payload
+                                await self.orders_queue.put(
+                                    [payload] if isinstance(payload, dict) else payload)
 
 
-                        '''??????? wallet'''
-                    elif event_type == "ACCOUNT_UPDATE" and wallet:
-                        await self.wallet_queue.put(payload)
+                                '''??????? wallet'''
+                            elif event_type == "ACCOUNT_UPDATE" and wallet:
+                                await self.wallet_queue.put(payload)
 
-                except Exception as e:
-                    print(f"Ошибка парсинга ордеров: {e}")
+                        except Exception as e:
+                            logger.warning(f"Ошибка парсинга ордеров: {e}")
+
+            except (websockets.exceptions.ConnectionClosed,
+                    websockets.exceptions.ConnectionClosedError) as e:
+                logger.info("Reconnect private WS (%s)", e)
+                continue
+            except asyncio.exceptions.CancelledError:
+                logger.info("Connection disconnected by keyboard interrupt")
+                raise
+            except Exception as e:
+                logger.exception(e)
+                raise e
 
     async def private_ws(self, orders: bool, wallet: bool):
         if not any([orders, wallet]):

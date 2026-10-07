@@ -130,6 +130,7 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         transfer_map = {
             ("SPOT", "USDT_FUTURE"): "MAIN_UMFUTURE",
             ("SPOT", "FUND"): "MAIN_FUNDING",
+            ("FUND", "SPOT"): "FUNDING_MAIN",
             ("USDT_FUTURE", "SPOT"): "UMFUTURE_MAIN",
             ("CONTRACT", "FUND"): "UMFUTURE_FUNDING",
             ("FUND", "CONTRACT"): "FUNDING_UMFUTURE",
