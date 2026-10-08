@@ -426,7 +426,7 @@ class BaseAsyncFuturesClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def get_position(self, symbol: str, side: str, empty_available: bool = False) -> PositionData | None:
+    async def get_position(self, symbol: str, side: str, base_coin: str = None, empty_available: bool = False) -> PositionData | None:
         raise NotImplementedError
 
     @abstractmethod

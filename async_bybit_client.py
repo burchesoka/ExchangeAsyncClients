@@ -835,14 +835,19 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
                 positions.append(PositionData.model_validate(position))
             return positions
 
-    async def get_position(self, symbol: str, side: str, empty_available: bool = False) -> PositionData | None:
+    async def get_position(self, symbol: str, side: str, base_coin: str = None, empty_available: bool = False) -> PositionData | None:
         if self.category == 'spot':
-            if symbol != 'BTC':
-                symbol = symbol.replace('BTC', '')
+            if base_coin is None:
+                raise Exception('base_coin is None')
+
+            if symbol != base_coin:
+                coin_to_find = symbol.replace(base_coin, '')
+            else:
+                coin_to_find = symbol
             wallet_data = await self.get_wallet_data()
 
             for coin, size in wallet_data.coins.items():
-                if symbol == coin:
+                if coin_to_find == coin:
                     return PositionData(
                         symbol=coin,
                         size=size,
