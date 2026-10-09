@@ -352,32 +352,42 @@ class AsyncBinanceWebsocket:
 
     async def _public_stream_loop_spot(self, stream_topic: str):
         """Поток №1: Публичные рыночные свечи (Klines)"""
-        async with websockets.asyncio.client.connect(SPOT_WS_PUBLIC_URL) as websocket:
-            kline_request = {
-                "id": "kline_sub",
-                "method": "SUBSCRIBE",
-                "params": [stream_topic]
-            }
-            await websocket.send(json.dumps(kline_request))
-            logger.info(f"✅ Подписка на Klines ({stream_topic}) оформлена.")
+        async for websocket in websockets.asyncio.client.connect(SPOT_WS_PUBLIC_URL):
+            try:
+                kline_request = {
+                    "id": "kline_sub",
+                    "method": "SUBSCRIBE",
+                    "params": [stream_topic]
+                }
+                await websocket.send(json.dumps(kline_request))
+                logger.info("✅ Подписка на Klines (%s) оформлена.", stream_topic)
 
-            async for message in websocket:
-                msg = json.loads(message)
-                payload = msg.get("data", msg)
-                stream = payload.get("e", "") or msg.get("stream", "")
-                if not stream:
-                    continue
-
-                if "kline" in stream:
-                    data = payload.get("k")
-                    if not isinstance(data, dict):
+                async for message in websocket:
+                    msg = json.loads(message)
+                    payload = msg.get("data", msg)
+                    stream = payload.get("e", "") or msg.get("stream", "")
+                    if not stream:
                         continue
-                    symbol = data.get("s").upper()
-                    if symbol not in self.klines_queues:
-                        self.klines_queues[symbol] = asyncio.Queue()
-                    normalized = self._normalize_kline(symbol=symbol, raw=data)
-                    if normalized:
-                        await self.klines_queues[symbol].put(normalized)
+
+                    if "kline" in stream:
+                        data = payload.get("k")
+                        if not isinstance(data, dict):
+                            continue
+                        symbol = data.get("s").upper()
+                        if symbol not in self.klines_queues:
+                            self.klines_queues[symbol] = asyncio.Queue()
+                        normalized = self._normalize_kline(symbol=symbol, raw=data)
+                        if normalized:
+                            await self.klines_queues[symbol].put(normalized)
+
+            except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedError):
+                continue
+            except asyncio.exceptions.CancelledError:
+                logger.info("Connection disconnected by keyboard interrupt")
+                break
+            except Exception as e:
+                logger.exception(e)
+                break
 
     async def _public_stream_loop(self, stream_topic: str):
         if self.channel_type == 'spot':
