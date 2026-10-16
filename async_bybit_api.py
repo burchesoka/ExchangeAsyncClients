@@ -250,7 +250,7 @@ class BybitAPI(BaseAsyncExchangeAPI):
         elif ret_code == 110021:
             logger.critical('out of open interest limit. Url: %s \n%s', url, response)
             raise exceptions.OutOfOpenInterest
-        elif ret_code == 110001 or 'order not exist' in ret_msg:
+        elif ret_code in [110001, 170213] or 'order not exist' in ret_msg or 'Order does not exist' in ret_msg:
             raise exceptions.OrderNotExist
         elif ret_code == 10006 or 'Too many visits. Exceeded the API Rate Limit' in ret_msg:
             raise exceptions.RateLimitExceeded
