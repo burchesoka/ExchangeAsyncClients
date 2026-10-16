@@ -282,8 +282,11 @@ class AsyncBinanceWebsocket:
                         except Exception as e:
                             logger.warning(f"Ошибка парсинга ордеров: {e}")
 
-            except (websockets.exceptions.ConnectionClosed,
-                    websockets.exceptions.ConnectionClosedError) as e:
+            except (
+                websockets.exceptions.ConnectionClosed,
+                websockets.exceptions.ConnectionClosedError,
+                asyncio.TimeoutError
+                    ) as e:
                 logger.info("Reconnect private WS (%s)", e)
                 continue
             except asyncio.exceptions.CancelledError:
