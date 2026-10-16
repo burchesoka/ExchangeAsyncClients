@@ -400,9 +400,17 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
                     for i in range(len(ex)):
                         orders.append(self._order_from_binance(ex[i]))
                     if len(orders) > 1:
+                        result_order = None
+                        for order in orders:
+                            if result_order is None:
+                                result_order = order
+                            else:
+                                result_order.qty += order.qty
+                                result_order.cum_exec_qty += order.cum_exec_qty
+                        logger.info('Several executions for one order')
                         logger.info(orders)
                         logger.info(ex)
-                        raise Exception('Several executions for one order')
+                        return result_order
                     return orders[0]
 
                 tail = "/api/v3/order"

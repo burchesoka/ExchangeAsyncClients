@@ -303,7 +303,10 @@ class AsyncBybitFuturesClient(BaseAsyncFuturesClient, BybitAPI):
             logger.critical('Unexpected error. instrument_info: %s', instrument_info)
             raise Exception
 
-        price_info = instrument_info.get('result').get('list')[0]['priceFilter']
+        try:
+            price_info = instrument_info.get('result').get('list')[0]['priceFilter']
+        except IndexError:
+            raise exceptions.NotFound
         symbol = instrument_info.get('result').get('list')[0]['symbol']
         lot_size_info = instrument_info.get('result').get('list')[0]['lotSizeFilter']
         return InstrumentInfo(
