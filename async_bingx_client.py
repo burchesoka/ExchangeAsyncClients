@@ -262,6 +262,12 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             logs_enabled: bool = True,
             retries: int = 25,
     ) -> WalletData:
+
+
+        ''' coins added only empty '''
+
+
+
         while True:
             response = await self.get_request("/openApi/swap/v2/user/balance", params={})
             if response.get("retMsg") == "OK":
@@ -282,6 +288,7 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
                         or b.get("available")
                         or "0",
                         "equity": b.get("equity") or b.get("totalEquity") or b.get("balance") or "0",
+                        "coins": {},
                     }
                     return WalletData.model_validate(row)
                 except Exception as e:

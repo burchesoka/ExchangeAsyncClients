@@ -172,6 +172,8 @@ class BaseAsyncExchangeAPI(ABC):
                         response_data: dict
                         if resp.status != 200:
                             logger.warning("%s %s", resp.status, resp)
+                            if resp.status >= 500:
+                                raise exceptions.ServerError
                         # else:
                         #     logger.debug("%s %s", resp.status, resp)
 
