@@ -98,12 +98,15 @@ class AsyncBinanceFuturesClient(BaseAsyncFuturesClient, BinanceAPI):
         unrealized_pnl = Decimal(str(response.get("totalUnrealizedProfit", "0")))
         equity = wallet_balance + unrealized_pnl
         coins = {}
-        for i in response['balances']:
-            free = Decimal(i['free'])
-            locked = Decimal(i['locked'])
-            if free or locked:
-                balance = free + locked
-                coins[i['asset']] = balance.normalize()
+        try:
+            for i in response['balances']:
+                free = Decimal(i['free'])
+                locked = Decimal(i['locked'])
+                if free or locked:
+                    balance = free + locked
+                    coins[i['asset']] = balance.normalize()
+        except KeyError:
+            pass
 
         return WalletData(
             wallet_balance=wallet_balance,
