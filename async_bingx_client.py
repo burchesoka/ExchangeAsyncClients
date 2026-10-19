@@ -906,7 +906,13 @@ class AsyncBingxFuturesClient(BaseAsyncFuturesClient, BingxAPI):
             positions.append(_bingx_position_to_model(position))
         return positions
 
-    async def get_position(self, symbol: str, side: str, empty_available: bool = False) -> PositionData | None:
+    async def get_position(
+            self,
+            symbol: str,
+            side: str,
+            base_coin: str = None,
+            empty_available: bool = False
+    ) -> PositionData | None:
         side_u = side.upper()
         if empty_available:
             raise Exception('empty_available is not supported for BingX')
