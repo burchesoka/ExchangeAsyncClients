@@ -363,7 +363,7 @@ class AsyncBinanceWebsocket:
                     "params": [stream_topic]
                 }
                 await websocket.send(json.dumps(kline_request))
-                logger.info("✅ Подписка на Klines (%s) оформлена.", stream_topic)
+                logger.info("Подписка на Klines (%s) оформлена.", stream_topic)
 
                 async for message in websocket:
                     msg = json.loads(message)
