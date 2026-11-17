@@ -266,3 +266,7 @@ class InvalidNonce(Exception):
 
 class RateLimitExceeded(Exception):
     """ Too many visits. Exceeded the API Rate Limit """
+
+
+class ForbiddenError(Exception):
+    """ Restart bot with timeout """

@@ -174,6 +174,8 @@ class BaseAsyncExchangeAPI(ABC):
                             logger.warning("%s %s", resp.status, resp)
                             if resp.status >= 500:
                                 raise exceptions.ServerError
+                            if resp.status == 403:
+                                raise exceptions.ForbiddenError
                         # else:
                         #     logger.debug("%s %s", resp.status, resp)
 

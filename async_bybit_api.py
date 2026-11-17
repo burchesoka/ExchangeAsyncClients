@@ -226,7 +226,7 @@ class BybitAPI(BaseAsyncExchangeAPI):
         if ret_code == 10002 or 'please check your server timestamp or recv_window param' in ret_msg:
             await self.update_recv_window_shift()
             raise exceptions.InvalidNonce
-        elif ret_code == 10016 or 'Internal System Error' in ret_msg:
+        elif ret_code == 10016 or 'Internal System Error' in ret_msg or 'request expired' in ret_msg:
             raise exceptions.ServerError
         elif ret_code == 33004 or 'Your api key has expired' in ret_msg:
             raise exceptions.AuthErrorExpiredKeys
@@ -256,6 +256,8 @@ class BybitAPI(BaseAsyncExchangeAPI):
             raise exceptions.RateLimitExceeded
         elif ret_code == 170131 or 'Insufficient balance' in ret_msg:
             raise exceptions.InsufficientBalance
+        elif ret_code == 10010 or 'Unmatched IP' in ret_msg:
+            raise exceptions.AuthenticationError('Unmatched IP')
         else:
             logger.critical('Unknown error %s\n%s',url, response)
             raise exceptions.RequestError
